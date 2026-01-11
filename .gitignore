@@ -21,3 +21,4 @@ build/
 /stdout.txt
 /gmon.out
 /*.exe
+themes/

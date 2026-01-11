@@ -218,6 +218,9 @@ void pce_main(void)
             currentUpdate = updates[currentUpdate == updates[0]];
         }
 
+        //音量控制
+        rg_volume_handle(joystick, startTime);
+
         rg_system_tick(rg_system_timer() - startTime);
 
         // See if we need to skip a frame to keep up

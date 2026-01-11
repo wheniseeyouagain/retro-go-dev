@@ -38,6 +38,15 @@ static bool driver_init(int device, int sample_rate)
     state.last_error = NULL;
     state.device = device;
 
+    // 第一步：提前初始化功放并强制静音（无论后续I2S是否初始化成功）
+    #ifdef RG_GPIO_SND_AMP_ENABLE
+        gpio_reset_pin(RG_GPIO_SND_AMP_ENABLE);
+        gpio_set_direction(RG_GPIO_SND_AMP_ENABLE, GPIO_MODE_OUTPUT);
+        gpio_set_level(RG_GPIO_SND_AMP_ENABLE, MUTE_ENABLE); // 先锁死静音
+        vTaskDelay(pdMS_TO_TICKS(5)); // 确保功放静音生效
+    #endif
+
+    // 第二步：初始化I2S核心逻辑（原有代码）
     if (state.device == 0)
     {
     #if RG_AUDIO_USE_INT_DAC
@@ -47,7 +56,7 @@ static bool driver_init(int device, int sample_rate)
             .bits_per_sample = 16,
             .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
             .communication_format = I2S_COMM_FORMAT_STAND_MSB,
-            .intr_alloc_flags = 0, // ESP_INTR_FLAG_LEVEL1
+            .intr_alloc_flags = 0,
             .dma_buf_count = DMA_BUFFER_COUNT,
             .dma_buf_len = DMA_BUFFER_LEN,
         }, 0, NULL);
@@ -68,11 +77,11 @@ static bool driver_init(int device, int sample_rate)
             .bits_per_sample = 16,
             .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
             .communication_format = I2S_COMM_FORMAT_STAND_I2S,
-            .intr_alloc_flags = 0, // ESP_INTR_FLAG_LEVEL1
+            .intr_alloc_flags = 0,
             .dma_buf_count = DMA_BUFFER_COUNT,
             .dma_buf_len = DMA_BUFFER_LEN,
         #if CONFIG_IDF_TARGET_ESP32
-            .use_apll = true, // External DAC may care about accuracy
+            .use_apll = true,
         #endif
         }, 0, NULL);
         if (ret == ESP_OK)
@@ -91,11 +100,10 @@ static bool driver_init(int device, int sample_rate)
         state.last_error = "This device does not support external DAC mode!";
     #endif
     }
-    #ifdef RG_GPIO_SND_AMP_ENABLE
-        gpio_reset_pin(RG_GPIO_SND_AMP_ENABLE);
-        gpio_set_level(RG_GPIO_SND_AMP_ENABLE, MUTE_ENABLE);
-        gpio_set_direction(RG_GPIO_SND_AMP_ENABLE, GPIO_MODE_OUTPUT);
-    #endif
+
+    // 第三步：清空I2S缓冲区（避免初始化残留噪声）
+    i2s_zero_dma_buffer(I2S_NUM_0);
+
     return state.last_error == NULL;
 }
 
@@ -106,7 +114,23 @@ static bool driver_set_sample_rates(int sampleRate)
 
 static bool driver_deinit(void)
 {
+    // 第一步：强制静音（优先切断功放）
+    #ifdef RG_GPIO_SND_AMP_ENABLE
+        gpio_set_level(RG_GPIO_SND_AMP_ENABLE, MUTE_ENABLE);
+        vTaskDelay(pdMS_TO_TICKS(10)); // 功放响应延时
+    #endif
+
+    // 第二步：停止I2S传输（彻底禁用输出）
+    i2s_stop(I2S_NUM_0);
+
+    // 第三步：清空缓冲区（避免残留数据）
+    i2s_zero_dma_buffer(I2S_NUM_0);
+    vTaskDelay(pdMS_TO_TICKS(2)); // 确保缓冲区清空
+
+    // 第四步：卸载I2S驱动
     i2s_driver_uninstall(I2S_NUM_0);
+
+    // 第五步：禁用DAC/重置I2S引脚（原有逻辑）
     if (state.device == 0)
     {
     #if RG_AUDIO_USE_INT_DAC
@@ -121,9 +145,12 @@ static bool driver_deinit(void)
         gpio_reset_pin(RG_GPIO_SND_I2S_WS);
     #endif
     }
+
+    // 第六步：重置功放引脚（最后操作）
     #ifdef RG_GPIO_SND_AMP_ENABLE
-    gpio_reset_pin(RG_GPIO_SND_AMP_ENABLE);
+        gpio_reset_pin(RG_GPIO_SND_AMP_ENABLE);
     #endif
+
     return true;
 }
 
@@ -189,10 +216,29 @@ static bool driver_submit(const rg_audio_frame_t *frames, size_t count)
 
 static bool driver_set_mute(bool mute)
 {
-    i2s_zero_dma_buffer(I2S_NUM_0);
     #ifdef RG_GPIO_SND_AMP_ENABLE
-    gpio_set_level(RG_GPIO_SND_AMP_ENABLE, mute ? MUTE_ENABLE : MUTE_DISABLE);
+        static bool amp_pin_inited = false;
+        if (!amp_pin_inited) {
+            gpio_reset_pin(RG_GPIO_SND_AMP_ENABLE);
+            gpio_set_direction(RG_GPIO_SND_AMP_ENABLE, GPIO_MODE_OUTPUT);
+            gpio_set_level(RG_GPIO_SND_AMP_ENABLE, MUTE_ENABLE); // 初始静音
+            amp_pin_inited = true;
+        }
     #endif
+
+    // 关键：静音/解除静音前先清空缓冲区
+    i2s_zero_dma_buffer(I2S_NUM_0);
+
+    // 电平控制
+    #ifdef RG_GPIO_SND_AMP_ENABLE
+        gpio_set_level(RG_GPIO_SND_AMP_ENABLE, mute ? MUTE_ENABLE : MUTE_DISABLE);
+    #endif
+
+    // 解除静音时加短暂延时（避免电平突变）
+    if (!mute) {
+        vTaskDelay(pdMS_TO_TICKS(2));
+    }
+
     state.muted = mute;
     return true;
 }

@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "rg_surface.h"
 
 typedef enum
 {
@@ -39,8 +40,7 @@ typedef enum
 enum
 {
     RG_DISPLAY_WRITE_NOSYNC = (1 << 0),
-    RG_DISPLAY_WRITE_BE_DATA = (1 << 1),
-    RG_DISPLAY_WRITE_DIRECT = (1 << 2),
+    RG_DISPLAY_WRITE_NOSWAP = (1 << 1),
 };
 
 typedef struct
@@ -75,8 +75,6 @@ typedef struct
     // bool (*write)(int left, int top, int width, int height, int pitch, const uint16_t data);
 } rg_display_driver_t;
 
-#include "rg_surface.h"
-
 typedef struct
 {
     struct
@@ -98,7 +96,6 @@ typedef struct
         int width, height;
     } source;
     bool changed;
-    bool initialized;
 } rg_display_t;
 
 void rg_display_init(void);
@@ -109,11 +106,9 @@ void rg_display_clear_rect(int left, int top, int width, int height, uint16_t co
 void rg_display_clear_except(int left, int top, int width, int height, uint16_t color_le);
 void rg_display_clear(uint16_t color_le);
 bool rg_display_is_busy(void);
+bool rg_display_sync(bool block);
 void rg_display_force_redraw(void);
 void rg_display_submit(const rg_surface_t *update, uint32_t flags);
-// rg_display_sync syncs our internal state to the display. With ILI9341/ST7789 it's a no-op because all writes
-// are direct. With other drivers it is used to signal that the internal framebuffer should be sent to the LCD.
-void rg_display_sync(void);
 
 rg_display_counters_t rg_display_get_counters(void);
 const rg_display_t *rg_display_get_info(void);
@@ -132,3 +127,5 @@ void rg_display_set_border(const char *filename);
 char *rg_display_get_border(void);
 void rg_display_set_custom_zoom(double factor);
 double rg_display_get_custom_zoom(void);
+void rg_display_write_rect_ppa(int left, int top, int width, int height, int stride, const uint16_t *buffer, uint32_t flags);
+void rg_volume_osd(int volume);

@@ -4,6 +4,7 @@
 
 #include <rg_system.h>
 
+
 #define AUDIO_SAMPLE_RATE   (32000)
 #define AUDIO_BUFFER_LENGTH (AUDIO_SAMPLE_RATE / 50 + 1)
 

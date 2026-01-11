@@ -384,6 +384,9 @@ void gbc_main(void)
             }
         }
 
+        //音量控制
+        rg_volume_handle(joystick, startTime);
+
         // Tick before submitting audio/syncing
         rg_system_tick(rg_system_timer() - startTime - audio_time);
 

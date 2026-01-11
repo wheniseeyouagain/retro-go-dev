@@ -341,6 +341,8 @@ void __cyg_profile_func_exit(void *this_fn, void *call_site);
 #define NO_PROFILE
 #endif
 
+void rg_volume_handle(uint32_t joystick, int64_t now);
+
 #ifdef __cplusplus
 }
 #endif

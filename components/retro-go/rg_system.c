@@ -265,7 +265,7 @@ static void system_monitor_task(void *arg)
         update_statistics();
 
         rg_battery_t battery = rg_input_read_battery();
-        rg_system_set_indicator(RG_INDICATOR_POWER_LOW, (battery.present && battery.level <= 2.f));
+        rg_system_set_indicator(RG_INDICATOR_POWER_LOW, (battery.present && battery.level <= 2.f)); // 低电量阈值，2%
         update_indicators(false);
 
         // Try to avoid complex conversions that could allocate, prefer rounding/ceiling if necessary.
@@ -1558,3 +1558,34 @@ NO_PROFILE void __cyg_profile_func_exit(void *this_fn, void *call_site)
     UNLOCK_PROFILE();
 }
 #endif
+
+static struct {
+    uint32_t last_joystick;
+    uint64_t last_action;
+} volume_state = {0};
+
+void rg_volume_handle(uint32_t joystick, int64_t now)
+{
+   if (joystick & (RG_KEY_VOLUP | RG_KEY_VOLDOWN))
+    {
+        // 与菜单对话框相同的300ms重复逻辑
+        uint32_t joystick_old = ((now - volume_state.last_action) > 300000) ? 0 : volume_state.last_joystick;
+        if (joystick ^ joystick_old)
+        {
+            int delta = (joystick & RG_KEY_VOLUP) ? 5 : -5;
+            int current_volume  = rg_audio_get_volume();
+            int new_volume  = current_volume + delta;
+            // 钳制音量值
+            new_volume = (new_volume < 0) ? 0 : (new_volume > 100) ? 100 : new_volume;
+            rg_volume_osd(new_volume);
+            // 有变化时才设置
+            if (new_volume != current_volume)
+            {
+                rg_audio_set_volume(new_volume);
+                volume_state.last_action = now;
+            }
+            
+        }
+        volume_state.last_joystick = joystick;
+    }
+}

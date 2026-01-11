@@ -30,6 +30,8 @@
 #include "targets/esp32-s3-devkit/config.h"
 #elif defined(RG_TARGET_ESP32_P4_DEVKIT)
 #include "targets/esp32-p4-devkit/config.h"
+#elif defined(RG_TARGET_MAJULA)
+#include "targets/majula/config.h"
 #else
 #warning "No target defined. Defaulting to ODROID-GO."
 #include "targets/odroid-go/config.h"
@@ -122,6 +124,7 @@
 #define RG_BATTERY_UPDATE_THRESHOLD_VOLT 0.010f
 #endif
 
+// 按钮消抖设置
 // Number of cycles the hardware state must be maintained before the change is reflected in rg_input_read_gamepad.
 // The reaction time is calculated as such: N*10ms +/- 10ms. Different hardware types have different requirements.
 // Valid range is 1-9
@@ -169,5 +172,5 @@
 #endif
 
 #ifndef RG_FONT_DEFAULT
-#define RG_FONT_DEFAULT RG_FONT_VERA_11
+#define RG_FONT_DEFAULT RG_FONT_VERA_14
 #endif

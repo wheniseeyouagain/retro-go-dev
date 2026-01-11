@@ -275,6 +275,9 @@ extern "C" void lynx_main(void)
             gPrimaryFrameBuffer = (UBYTE*)currentUpdate->data;
         }
 
+        //音量控制
+        rg_volume_handle(joystick, startTime);
+
         // The Lynx has a variable tick rate, I don't know of a better way to guess than from audio stream
         rg_system_set_tick_rate(AUDIO_SAMPLE_RATE / (gAudioBufferPointer / 2));
         rg_system_tick(rg_system_timer() - startTime);

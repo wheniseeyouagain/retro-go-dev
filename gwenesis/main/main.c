@@ -270,7 +270,7 @@ void app_main(void)
         .handlers.options = &options_handler,
     };
     app = rg_system_init(&config);
-    app->frameskip = 2;
+    app->frameskip = 0; //关闭跳帧，之前为2
 
     yfm_enabled = rg_settings_get_number(NS_APP, SETTING_YFM_EMULATION, 1);
     sn76489_enabled = rg_settings_get_number(NS_APP, SETTING_SN76489_EMULATION, 0);
@@ -329,7 +329,17 @@ void app_main(void)
     extern unsigned int screen_width, screen_height;
     extern int hint_pending;
 
-    uint32_t keymap[8] = {RG_KEY_UP, RG_KEY_DOWN, RG_KEY_LEFT, RG_KEY_RIGHT, RG_KEY_A, RG_KEY_B, RG_KEY_SELECT, RG_KEY_START};
+    // MD只能处理8个按钮位
+    uint32_t keymap[8] = {
+        RG_KEY_UP,      // 0: MD UP
+        RG_KEY_DOWN,    // 1: MD DOWN
+        RG_KEY_LEFT,    // 2: MD LEFT
+        RG_KEY_RIGHT,   // 3: MD RIGHT
+        RG_KEY_A,       // 4: MD A (主要动作)
+        RG_KEY_B,       // 5: MD B (次要动作)
+        RG_KEY_X,       // 6: MD C (第三个动作)
+        RG_KEY_START,   // 7: MD Start
+    };
     uint32_t joystick_old = -1;
 
     int skipFrames = 0;
@@ -360,6 +370,11 @@ void app_main(void)
                 else
                     gwenesis_io_pad_release_button(0, i);
             }
+            // Y键也触发MD的C按钮（位6）,与X键相同
+            if (joystick & RG_KEY_Y)
+                gwenesis_io_pad_press_button(0, 6); 
+            else if (!(joystick & RG_KEY_X))
+                gwenesis_io_pad_release_button(0, 6);
             joystick_old = joystick;
         }
 
@@ -489,6 +504,9 @@ void app_main(void)
             rg_display_submit(currentUpdate, 0);
         }
 
+        //音量控制
+        rg_volume_handle(joystick, startTime);
+
         rg_system_tick(rg_system_timer() - startTime);
 
         // TODO: Mix in gwenesis_sn76489_buffer
@@ -497,10 +515,14 @@ void app_main(void)
         if (skipFrames == 0)
         {
             int elapsed = rg_system_timer() - startTime;
-            if (app->frameskip > 0)
-                skipFrames = app->frameskip;
-            else if (elapsed > app->frameTime + 1500) // Allow some jitter
-                skipFrames = 1; // (elapsed / frameTime)
+            // if (app->frameskip > 0)
+            //     skipFrames = app->frameskip;
+            // else if (elapsed > app->frameTime + 1500) // Allow some jitter
+            //     skipFrames = 1; // (elapsed / frameTime)
+            // else if (drawFrame && slowFrame)
+            //     skipFrames = 1;
+            if (elapsed > app->frameTime + 3000) // 放宽跳帧条件
+                skipFrames = 1;
             else if (drawFrame && slowFrame)
                 skipFrames = 1;
         }

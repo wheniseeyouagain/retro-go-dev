@@ -277,6 +277,9 @@ void sms_main(void)
             mixbuffer[i].right = snd.stream[1][i] * 2.75f;
         }
 
+        //音量控制
+        rg_volume_handle(joystick, startTime);
+
         // Tick before submitting audio/syncing
         rg_system_tick(rg_system_timer() - startTime);
 

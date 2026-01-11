@@ -5,7 +5,8 @@
 #include "applications.h"
 #include "gui.h"
 
-#define HEADER_HEIGHT       (50)
+#define HEADER_HEIGHT       (26)
+#define HEADER_X            (162)
 #define LOGO_WIDTH          (46)
 #define PREVIEW_HEIGHT      ((int)(gui.height * 0.70f))
 #define PREVIEW_WIDTH       ((int)(gui.width * 0.50f))
@@ -360,8 +361,8 @@ void gui_scroll_list(tab_t *tab, scroll_whence_t mode, int arg)
 
     if (list_length > 0 && list->items[new_cursor].arg)
         sprintf(tab->status[0].left, "%d / %d", (new_cursor + 1) % 10000, list_length % 10000);
-    else
-        strcpy(tab->status[0].left, "List empty");
+    // else
+    //     strcpy(tab->status[0].left, "List empty");
 
     // if (new_cursor != old_cursor)
     {
@@ -384,7 +385,7 @@ void gui_redraw(void)
     }
     else if (gui.browse)
     {
-        gui_draw_background(tab, 4);
+        gui_draw_background(tab, 8); //背景变暗程序由4改为8
         gui_draw_header(tab, 0);
         gui_draw_status(tab);
         gui_draw_list(tab);
@@ -393,7 +394,7 @@ void gui_redraw(void)
     else
     {
         gui_draw_background(tab, 0);
-        gui_draw_header(tab, (gui.height - HEADER_HEIGHT) / 2);
+        // gui_draw_header(tab, (gui.height - HEADER_HEIGHT) / 2); //主界面不显示logo和banner
         // gui_draw_tab_indicator();
     }
 
@@ -465,12 +466,13 @@ void gui_draw_header(tab_t *tab, int offset)
 {
     if (!tab->banner)
         tab->banner = gui_get_image("banner", tab->name);
-    if (!tab->logo)
-        tab->logo = gui_get_image("logo", tab->name);
+    //不显示logo，logo和banner合成一张图片了
+    // if (!tab->logo)
+    //     tab->logo = gui_get_image("logo", tab->name);
+    // rg_gui_draw_image(0, offset, LOGO_WIDTH, HEADER_HEIGHT, false, tab->logo);
 
-    rg_gui_draw_image(0, offset, LOGO_WIDTH, HEADER_HEIGHT, false, tab->logo);
     if (tab->banner)
-        rg_gui_draw_image(LOGO_WIDTH + 1, offset + 8, 0, HEADER_HEIGHT - 8, false, tab->banner);
+        rg_gui_draw_image(HEADER_X, 0, 0, HEADER_HEIGHT, false, tab->banner);
     else
         rg_gui_draw_text(LOGO_WIDTH + 8, offset + 8, 0, tab->desc, gui.theme->foreground, C_TRANSPARENT, RG_TEXT_BIGGER);
 }
@@ -487,13 +489,13 @@ void gui_draw_tab_indicator(void)
 
 void gui_draw_status(tab_t *tab)
 {
-    const int status_x = LOGO_WIDTH + 12;
-    const int status_y = HEADER_HEIGHT - 16;
+    const int status_x = 0;
+    const int status_y = 0;
     char *txt_left = tab->status[tab->status[1].left[0] ? 1 : 0].left;
     char *txt_right = tab->status[tab->status[1].right[0] ? 1 : 0].right;
 
-    rg_gui_draw_text(status_x, status_y, gui.width - status_x, txt_right, gui.theme->foreground, C_TRANSPARENT, RG_TEXT_ALIGN_RIGHT);
-    rg_gui_draw_text(status_x, status_y, 0, txt_left, gui.theme->foreground, C_TRANSPARENT, RG_TEXT_ALIGN_LEFT);
+    rg_gui_draw_text(status_x, status_y, gui.width - status_x, txt_right, C_SILVER, C_TRANSPARENT, RG_TEXT_ALIGN_RIGHT);
+    rg_gui_draw_text(status_x, status_y, 0, txt_left, C_SILVER, C_TRANSPARENT, RG_TEXT_ALIGN_LEFT);
     rg_gui_draw_icons();
 }
 

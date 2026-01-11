@@ -35,7 +35,7 @@ PROJECT_APPS = {
 #         PROJECT_APPS[name] = [0, 0, 0]
 try:
     PROJECT_VER = os.getenv("PROJECT_VER") or subprocess.check_output(
-        "git describe --tags --abbrev=5 --dirty --always", shell=True
+        "git describe --tags --dirty --always", shell=True
     ).decode().rstrip()
 except:
     PROJECT_VER = "unknown"

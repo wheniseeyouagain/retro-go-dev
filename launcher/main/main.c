@@ -10,7 +10,8 @@
 #include "browser.h"
 #include "gui.h"
 #include "webui.h"
-#include "updater.h"
+// #include "updater.h"
+
 
 static rg_app_t *app;
 
@@ -137,33 +138,6 @@ static rg_gui_event_t startup_app_cb(rg_gui_option_t *option, rg_gui_event_t eve
         gui.startup_mode = 0;
 
     strcpy(option->value, modes[gui.startup_mode % (max + 1)]);
-    return RG_DIALOG_VOID;
-}
-
-static rg_gui_event_t updater_cb(rg_gui_option_t *option, rg_gui_event_t event)
-{
-    if (event == RG_DIALOG_ENTER)
-    {
-        const rg_gui_option_t options[] = {
-        #if defined(RG_ENABLE_NETWORKING) && RG_UPDATER_ENABLE
-            {1, _("Check for updates"), NULL, RG_DIALOG_FLAG_NORMAL, NULL},
-        #endif
-        #if defined(RG_UPDATER_APPLICATION)
-            {2, _("Reboot to installer"), NULL, RG_DIALOG_FLAG_NORMAL, NULL},
-        #endif
-            RG_DIALOG_END,
-        };
-        int sel = rg_gui_dialog(_("Update Retro-Go"), options, 0);
-        #if defined(RG_ENABLE_NETWORKING) && RG_UPDATER_ENABLE
-        if (sel == 1)
-            updater_show_dialog();
-        #endif
-        #if defined(RG_UPDATER_APPLICATION)
-        if (sel == 2)
-            rg_system_switch_app(RG_UPDATER_APPLICATION, NULL, NULL, 0, 0);
-        #endif
-        return RG_DIALOG_REDRAW;
-    }
     return RG_DIALOG_VOID;
 }
 
@@ -354,6 +328,9 @@ static void retro_loop(void)
             gui_redraw();
         }
 
+        //音量控制
+        rg_volume_handle(joystick, start_time);
+
         rg_system_tick(rg_system_timer() - start_time);
 
         if ((gui.joystick|joystick) & RG_KEY_ANY)
@@ -454,7 +431,6 @@ static void options_handler(rg_gui_option_t *dest)
 static void about_handler(rg_gui_option_t *dest)
 {
     *dest++ = (rg_gui_option_t){0, _("Build CRC cache"), NULL, RG_DIALOG_FLAG_NORMAL, &prebuild_cache_cb};
-    *dest++ = (rg_gui_option_t){0, _("Update Retro-Go"), NULL, RG_DIALOG_FLAG_NORMAL, &updater_cb};
     *dest++ = (rg_gui_option_t)RG_DIALOG_END;
 }
 
@@ -470,7 +446,7 @@ void app_main(void)
         .handlers.about = &about_handler,
         // The launcher makes a lot of small allocations and it sometimes fills internal RAM,
         // causing the SD Card driver to stop working.
-        .mallocAlwaysInternal = 1024,
+        .mallocAlwaysInternal = 2048, //之前是1024
     });
     app->configNs = "launcher";
 

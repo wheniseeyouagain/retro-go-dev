@@ -282,6 +282,9 @@ void gw_main(void)
         }
         /****************************************************************************/
 
+        //音量控制
+        rg_volume_handle(joystick, startTime);
+
         // Tick before submitting audio/syncing
         rg_system_tick(rg_system_timer() - startTime);
         rg_audio_submit(mixbuffer, GW_AUDIO_BUFFER_LENGTH);

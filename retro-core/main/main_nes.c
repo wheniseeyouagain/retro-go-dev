@@ -211,6 +211,8 @@ void nes_main(void)
     };
 
     app = rg_system_reinit(AUDIO_SAMPLE_RATE, &handlers, NULL);
+    // 强制禁用跳帧
+    app->frameskip = 0;
 
     overscan = rg_settings_get_number(NS_APP, SETTING_OVERSCAN, 1);
     autocrop = rg_settings_get_number(NS_APP, SETTING_AUTOCROP, 0);
@@ -268,13 +270,14 @@ void nes_main(void)
 
     rg_system_set_tick_rate(nes->refresh_rate);
 
-    int skipFrames = 0;
+    // int skipFrames = 0;
 
     while (true)
     {
         const int64_t startTime = rg_system_timer();
         uint32_t joystick = rg_input_read_gamepad();
-        bool drawFrame = !skipFrames && !nsfPlayer;
+        // bool drawFrame = !skipFrames && !nsfPlayer;
+        bool drawFrame = true; 
 
         if (joystick & (RG_KEY_MENU|RG_KEY_OPTION))
         {
@@ -283,6 +286,12 @@ void nes_main(void)
             else
                 rg_gui_options_menu();
             continue;
+        }
+
+        // NSF播放器，与游戏无关
+        if (nsfPlayer)
+        {
+            nsf_draw_overlay();
         }
 
         int buttons = 0;
@@ -301,28 +310,31 @@ void nes_main(void)
         nes_setvidbuf(currentUpdate->data);
         nes_emulate(drawFrame);
 
+        //音量控制
+        rg_volume_handle(joystick, startTime);
+
         // Tick before submitting audio/syncing
         rg_system_tick(rg_system_timer() - startTime);
 
         // Audio is used to pace emulation :)
         rg_audio_submit((void*)nes->apu->buffer, nes->apu->samples_per_frame);
 
-        if (skipFrames == 0)
-        {
-            int elapsed = rg_system_timer() - startTime;
-            if (nsfPlayer)
-                skipFrames = 10, nsf_draw_overlay();
-            else if (app->frameskip > 0)
-                skipFrames = app->frameskip;
-            else if (elapsed > app->frameTime + 1500) // Allow some jitter
-                skipFrames = 1; // (elapsed / frameTime)
-            else if (drawFrame && slowFrame)
-                skipFrames = 1;
-        }
-        else if (skipFrames > 0)
-        {
-            skipFrames--;
-        }
+        // if (skipFrames == 0)
+        // {
+        //     int elapsed = rg_system_timer() - startTime;
+        //     if (nsfPlayer)
+        //         skipFrames = 10, nsf_draw_overlay();
+        //     else if (app->frameskip > 0)
+        //         skipFrames = app->frameskip;
+        //     else if (elapsed > app->frameTime + 1500) // Allow some jitter
+        //         skipFrames = 1; // (elapsed / frameTime)
+        //     else if (drawFrame && slowFrame)
+        //         skipFrames = 1;
+        // }
+        // else if (skipFrames > 0)
+        // {
+        //     skipFrames--;
+        // }
     }
 
     RG_PANIC("Nofrendo died!");

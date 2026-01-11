@@ -182,13 +182,13 @@ bool rg_gui_set_theme(const char *theme_name)
         RG_LOGI("Using built-in theme!\n");
     }
 
-    gui.style.box_background = rg_gui_get_theme_color("dialog", "background", C_NAVY);
-    gui.style.box_header = rg_gui_get_theme_color("dialog", "header", C_WHITE);
-    gui.style.box_border = rg_gui_get_theme_color("dialog", "border", C_DIM_GRAY);
-    gui.style.item_standard = rg_gui_get_theme_color("dialog", "item_standard", C_WHITE);
-    gui.style.item_disabled = rg_gui_get_theme_color("dialog", "item_disabled", C_GRAY);
-    gui.style.item_message = rg_gui_get_theme_color("dialog", "item_message", C_SILVER);
-    gui.style.scrollbar = rg_gui_get_theme_color("dialog", "scrollbar", C_WHITE);
+    gui.style.box_background = rg_gui_get_theme_color("dialog", "background", C_BLACK);
+    gui.style.box_header = rg_gui_get_theme_color("dialog", "header", C_BRIGHT_YELLOW);
+    gui.style.box_border = rg_gui_get_theme_color("dialog", "border", C_OLIVE_YELLOW);
+    gui.style.item_standard = rg_gui_get_theme_color("dialog", "item_standard", C_BRIGHT_YELLOW);
+    gui.style.item_disabled = rg_gui_get_theme_color("dialog", "item_disabled", C_DARK_YELLOW);
+    gui.style.item_message = rg_gui_get_theme_color("dialog", "item_message", C_BRIGHT_YELLOW);
+    gui.style.scrollbar = rg_gui_get_theme_color("dialog", "scrollbar", C_BRIGHT_YELLOW);
     gui.style.shadow = rg_gui_get_theme_color("dialog", "shadow", C_NONE);
 
     return true;
@@ -230,12 +230,13 @@ const char *rg_gui_get_theme_name(void)
 
 bool rg_gui_set_font(int index)
 {
+    RG_LOGI("Setting font index: %d (RG_FONT_MAX=%d)\n", index, RG_FONT_MAX);
     if (index < 0 || index > RG_FONT_MAX - 1)
         return false;
 
     gui.font = fonts[index];
     gui.font_index = index;
-    gui.font_height = (index < 3) ? (8 + index * 4) : gui.font->height;
+    gui.font_height = gui.font->height; //使用字体本身高度
 
     rg_settings_set_number(NS_GLOBAL, SETTING_FONTTYPE, index);
 
@@ -307,15 +308,40 @@ static size_t get_glyph(uint32_t *output, const rg_font_t *font, int points, int
     if (points <= 0)
         points = font->height;
 
+
     const uint8_t *ptr = font->data;
     const rg_font_glyph_t *glyph = (rg_font_glyph_t *)ptr;
-    // for (size_t i = 0; i < font->chars && glyph->code && glyph->code != c; ++i)
-    while (glyph->code && glyph->code != c)
+    if(font->type == 2){
+
+        if (c <= 255)
+        {
+            int times =0;
+            while (glyph->code && glyph->code != c && times++ <=255)
+            {
+                if (glyph->width != 0)
+                    ptr += (((glyph->width * glyph->height) - 1) / 8) + 1;
+                ptr += sizeof(rg_font_glyph_t);
+                glyph = (rg_font_glyph_t *)ptr;
+            }
+        }else if(c >= font->map_start_code){
+            uint32_t map_index =  c - font->map_start_code;
+            if (map_index < font->map_len)
+            {
+                uint32_t data_index = font->map[map_index];
+                glyph = (rg_font_glyph_t *)(ptr + data_index);
+            }
+        }
+    }
+    else
     {
-        if (glyph->width != 0)
-            ptr += (((glyph->width * glyph->height) - 1) / 8) + 1;
-        ptr += sizeof(rg_font_glyph_t);
-        glyph = (rg_font_glyph_t *)ptr;
+        // for (size_t i = 0; i < font->chars && glyph->code && glyph->code != c; ++i)
+        while (glyph->code && glyph->code != c)
+        {
+            if (glyph->width != 0)
+                ptr += (((glyph->width * glyph->height) - 1) / 8) + 1;
+            ptr += sizeof(rg_font_glyph_t);
+            glyph = (rg_font_glyph_t *)ptr;
+        }
     }
 
     if (glyph && glyph->code == c) // Glyph found
@@ -558,28 +584,54 @@ void rg_gui_draw_icons(void)
     rg_network_t network = rg_network_get_info();
     rg_rect_t txt = TEXT_RECT("00:00", 0);
     int bar_height = txt.height;
-    int icon_height = RG_MAX(8, bar_height - 4);
-    int icon_top = RG_MAX(0, (bar_height - icon_height - 1) / 2);
+    int icon_height = 18;
+    int icon_top = RG_MAX(0, (bar_height - icon_height) / 2);
     int right = gui.margins.right;
 
     if (battery.present)
     {
-        right += 22;
+        char battery_percent[8];
+        snprintf(battery_percent, sizeof(battery_percent), "%d%%", (int)battery.level);
+        rg_rect_t percent_rect = TEXT_RECT(battery_percent, 0);
+        int percent_width = percent_rect.width;
+        int percent_x = -(right + percent_width);
+        int percent_y = 0;
+        //百分比文字
+        rg_gui_draw_text(percent_x, percent_y, 0, battery_percent, C_SILVER,
+                        gui.screen_buffer ? C_TRANSPARENT : C_BLACK, 0);
 
-        int width = 16;
-        int height = icon_height;
-        int width_fill = width / 100.f * battery.level;
-        int x_pos = -right;
+        right += (percent_width + 4);
+
+        //电池身体
+        int border = 1;
+        int body_width = 30;
+        int body_height = icon_height;
+        int body_padding = 2;
+        //电量
+        int bat_width = (body_width - 2*border - 2*body_padding) / 100.f * battery.level;
+        int bat_height = body_height - 2*border - 2*body_padding;
+        //电池头
+        int heat_width = 2;
+        int heat_height = 4;
+
+        int x_pos = -(body_width + 2 + heat_width + right);
         int y_pos = icon_top;
+        int bat_x = x_pos + border + body_padding;
+        int bat_y = y_pos + border + body_padding;
+        int heat_x = x_pos + body_width + 2;
+        int heat_y = y_pos + (icon_height - heat_height) / 2;
 
-        rg_color_t color_fill = (battery.level > 20 ? (battery.level > 40 ? C_FOREST_GREEN : C_ORANGE) : C_RED);
+        rg_color_t color_fill = (battery.level > 10 ? (battery.level > 20 ? C_FOREST_GREEN : C_ORANGE) : C_RED);
         rg_color_t color_border = C_SILVER;
         rg_color_t color_empty = C_BLACK;
 
-        rg_gui_draw_rect(x_pos, y_pos, width + 2, height, 1, color_border, C_NONE);
-        rg_gui_draw_rect(x_pos + width + 2, y_pos + 2, 2, height - 4, 1, color_border, C_NONE);
-        rg_gui_draw_rect(x_pos + 1, y_pos + 1, width_fill, height - 2, 0, 0, color_fill);
-        rg_gui_draw_rect(x_pos + 1 + width_fill, y_pos + 1, width - width_fill, height - 2, 0, 0, color_empty);
+        rg_gui_draw_rect(x_pos, y_pos, body_width, body_height, border, color_border, C_NONE); //电池身体
+        rg_gui_draw_rect(x_pos + border, y_pos + border, body_width - 2*border, body_height - 2*border, body_padding, C_BLACK, C_NONE); //电池内边距
+        rg_gui_draw_rect(heat_x, heat_y, heat_width, heat_height, 0, 0, color_border); //电池头
+        rg_gui_draw_rect(bat_x, bat_y, bat_width, bat_height, 0, 0, color_fill); //电量
+        rg_gui_draw_rect(x_pos + border + bat_width, bat_y, body_width-bat_width-2*border-2*body_padding, bat_height, 0, 0, color_empty); //空电量
+
+        right += x_pos;
     }
 
     if (network.state > RG_NETWORK_DISCONNECTED)
@@ -641,7 +693,7 @@ void rg_gui_draw_status_bars(void)
     if (!app->initialized || app->isLauncher)
         return;
 
-    snprintf(header, max_len, "SPEED: %d%% (%d %d) / BUSY: %d%%",
+    snprintf(header, max_len, "SPEED: %d%% (%d/%d) / BUSY: %d%%",
         (int)roundf(stats.speedPercent),
         (int)roundf(stats.totalFPS),
         (int)app->frameskip,
@@ -678,9 +730,9 @@ rg_rect_t rg_gui_draw_dialog(const char *title, const rg_gui_option_t *options, 
 
     const int sep_width = TEXT_RECT(": ", 0).width;
     const int font_height = gui.font_height;
-    const int max_box_width = 0.82f * gui.screen_width;
-    const int max_box_height = 0.82f * gui.screen_height;
-    const int box_padding = 6;
+    const int max_box_width = 0.86f * gui.screen_width;
+    const int max_box_height = 0.86f * gui.screen_height;
+    const int box_padding = 16;
     const int row_padding_y = 0; // now handled by draw_text
     const int row_padding_x = 8;
     const int max_inner_width = max_box_width - sep_width - (row_padding_x + box_padding) * 2;
@@ -1716,7 +1768,7 @@ static rg_gui_event_t theme_cb(rg_gui_option_t *option, rg_gui_event_t event)
 {
     if (event == RG_DIALOG_ENTER)
     {
-        char *path = rg_gui_file_picker("Theme", RG_BASE_PATH_THEMES, NULL, false, true);
+        char *path = rg_gui_file_picker(_("Theme"), RG_BASE_PATH_THEMES, NULL, false, true);
         if (path != NULL)
         {
             const char *theme = strlen(path) > 0 ? rg_basename(path) : NULL;
@@ -1726,7 +1778,7 @@ static rg_gui_event_t theme_cb(rg_gui_option_t *option, rg_gui_event_t event)
         }
     }
 
-    strcpy(option->value, rg_gui_get_theme_name() ?: "Default");
+    strcpy(option->value, rg_gui_get_theme_name() ?: _("Default"));
     return RG_DIALOG_VOID;
 }
 
@@ -2042,14 +2094,14 @@ void rg_gui_options_menu(void)
         {0, _("Brightness"),    "-", RG_DIALOG_FLAG_NORMAL, &brightness_update_cb},
         #endif
         {0, _("Volume"),        "-", RG_DIALOG_FLAG_NORMAL, &volume_update_cb},
-        {0, _("Audio out"),     "-", RG_DIALOG_FLAG_NORMAL, &audio_update_cb},
+        // {0, _("Audio out"),     "-", RG_DIALOG_FLAG_NORMAL, &audio_update_cb},//音频
         RG_DIALOG_END,
     };
     const rg_gui_option_t misc_options[] = {
-        {0, _("Font type"),     "-", RG_DIALOG_FLAG_NORMAL, &font_type_cb},
+        // {0, _("Font type"),     "-", RG_DIALOG_FLAG_NORMAL, &font_type_cb},//字体
         {0, _("Theme"),         "-", RG_DIALOG_FLAG_NORMAL, &theme_cb},
-        {0, _("Show clock"),    "-", RG_DIALOG_FLAG_NORMAL, &show_clock_cb},
-        {0, _("Timezone"),      "-", RG_DIALOG_FLAG_NORMAL, &timezone_cb},
+        // {0, _("Show clock"),    "-", RG_DIALOG_FLAG_NORMAL, &show_clock_cb},//时钟
+        // {0, _("Timezone"),      "-", RG_DIALOG_FLAG_NORMAL, &timezone_cb},//时区
         {0, _("Language"),      "-", RG_DIALOG_FLAG_NORMAL, &language_cb},
         #ifdef RG_GPIO_LED // Only show disk LED option if disk LED GPIO pin is defined
         {0, _("LED options"),   NULL, RG_DIALOG_FLAG_NORMAL, &led_indicator_cb},
@@ -2095,10 +2147,10 @@ void rg_gui_about_menu(void)
 
     // TODO: Add indicator whether or not the build is a release, and if it's official (built by me)
     rg_gui_option_t options[20] = {
-        {0, _("Version"), (char *)app->version, RG_DIALOG_FLAG_NORMAL, NULL},
-        {0, _("Date"), (char *)app->buildDate, RG_DIALOG_FLAG_NORMAL, NULL},
-        {0, _("Target"), (char *)RG_TARGET_NAME, RG_DIALOG_FLAG_NORMAL, NULL},
-        {0, _("Website"), (char *)RG_PROJECT_WEBSITE, RG_DIALOG_FLAG_NORMAL, NULL},
+        {0, _("Version"), (char *)app->version, RG_DIALOG_FLAG_MESSAGE, NULL},
+        {0, _("Date"), (char *)app->buildDate, RG_DIALOG_FLAG_MESSAGE, NULL},
+        {0, _("Target"), (char *)RG_TARGET_NAME, RG_DIALOG_FLAG_MESSAGE, NULL},
+        {0, _("Website"), (char *)RG_PROJECT_WEBSITE, RG_DIALOG_FLAG_MESSAGE, NULL},
         RG_DIALOG_SEPARATOR,
         {4, _("Options"), NULL, have_option_btn ? RG_DIALOG_FLAG_HIDDEN : RG_DIALOG_FLAG_NORMAL , NULL},
         // {1, _("View credits", NULL, RG_DIALOG_FLAG_NORMAL, NULL},
@@ -2256,26 +2308,22 @@ static rg_gui_event_t slot_select_cb(rg_gui_option_t *option, rg_gui_event_t eve
     {
         rg_image_t *preview = NULL;
         rg_color_t color = C_BLUE;
-        size_t margin = 0; // TEXT_RECT("ABC", 0).height;
         size_t border = 3;
         char buffer[100];
         if (slot->is_used)
         {
             preview = rg_surface_load_image_file(slot->preview, 0);
             if (slot->is_lastused)
-                snprintf(buffer, sizeof(buffer), "Slot %d (last used)", slot->id);
-            else
-                snprintf(buffer, sizeof(buffer), "Slot %d", slot->id);
+                snprintf(buffer, sizeof(buffer), _("last used"));
         }
         else
         {
-            snprintf(buffer, sizeof(buffer), "Slot %d is empty", slot->id);
+            snprintf(buffer, sizeof(buffer), _("is empty"));
             color = C_RED;
         }
-        rg_gui_draw_image(0, margin, gui.screen_width, gui.screen_height - margin * 2, true, preview);
-        rg_gui_draw_rect(0, margin, gui.screen_width, gui.screen_height - margin * 2, border, color, C_NONE);
-        rg_gui_draw_rect(border, margin + border, gui.screen_width - border * 2, gui.font_height * 2 + 6, 0, C_BLACK, C_BLACK);
-        rg_gui_draw_text(border + 60, margin + border + 5, gui.screen_width - border * 2 - 120, buffer, C_WHITE, C_BLACK, RG_TEXT_ALIGN_CENTER|RG_TEXT_BIGGER|RG_TEXT_NO_PADDING);
+        rg_gui_draw_image(0, 0, gui.screen_width, gui.screen_height, true, preview);
+        rg_gui_draw_rect(0, 0, gui.screen_width, gui.screen_height, border, color, C_NONE);
+        rg_gui_draw_text(border, border, gui.screen_width - border * 2, buffer, C_WHITE, C_BLACK, RG_TEXT_ALIGN_CENTER|RG_TEXT_NO_PADDING);
         rg_surface_free(preview);
     }
     else if (event == RG_DIALOG_ENTER)

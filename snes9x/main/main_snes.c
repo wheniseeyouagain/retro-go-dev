@@ -438,7 +438,7 @@ void app_main(void)
     }
 
     rg_system_set_tick_rate(Memory.ROMFramesPerSecond);
-    app->frameskip = 3;
+    app->frameskip = 0; // 禁用系统跳帧，之前是3
 
     const int samplesPerFrame = (int)roundf((float)app->sampleRate / app->tickRate);
     bool menuCancelled = false;
@@ -491,26 +491,34 @@ void app_main(void)
             currentUpdate = updates[currentUpdate == updates[0]];
         }
 
+        //音量控制
+        rg_volume_handle(joystick, startTime);
+        
     #ifdef USE_AUDIO_TASK
         rg_system_tick(rg_system_timer() - startTime);
         rg_task_msg_t msg = {.type = (int)sound_enabled, .dataInt = samplesPerFrame};
-        if (sound_enabled || app->frameTime - (rg_system_timer() - startTime) > 2000)
+        if (sound_enabled || app->frameTime - (rg_system_timer() - startTime) > 5000) // 之前是2000，更大值以减少音频丢弃
             rg_task_send(audio_task_handle, &msg, -1);
     #else
         if (sound_enabled)
             mix_samples(samplesPerFrame << 1);
         rg_system_tick(rg_system_timer() - startTime);
-        if (sound_enabled || app->frameTime - (rg_system_timer() - startTime) > 2000)
+        if (sound_enabled || app->frameTime - (rg_system_timer() - startTime) > 5000) // 之前是2000，更大值以减少音频丢弃
             rg_audio_submit(currentAudioBuffer, samplesPerFrame);
     #endif
 
         if (skipFrames == 0)
         {
             int elapsed = rg_system_timer() - startTime;
-            if (app->frameskip > 0)
-                skipFrames = app->frameskip;
-            else if (elapsed > app->frameTime + 1500) // Allow some jitter
-                skipFrames = 1; // (elapsed / frameTime)
+            // if (app->frameskip > 0)
+            //     skipFrames = app->frameskip;
+            // else if (elapsed > app->frameTime + 1500) // Allow some jitter
+            //     skipFrames = 1; // (elapsed / frameTime)
+            // else if (drawFrame && slowFrame)
+            //     skipFrames = 1;
+            // 只在性能严重不足时才跳1帧
+            if (elapsed > app->frameTime  + 3500) // 放宽跳帧条件
+                skipFrames = 1;
             else if (drawFrame && slowFrame)
                 skipFrames = 1;
         }

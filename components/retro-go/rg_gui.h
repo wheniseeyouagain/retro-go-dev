@@ -64,6 +64,9 @@ typedef struct
     uint8_t width;  // median width of glyphs
     uint8_t height; // height of tallest glyph
     size_t  chars;  // glyph count
+    const uint32_t *map;
+    uint32_t map_len;
+    uint32_t map_start_code;
     uint8_t data[]; // stream of rg_font_glyph_t (end of list indicated by an entry with 0x0000 codepoint)
 } rg_font_t;
 
@@ -292,6 +295,9 @@ enum colors565 // rg_color_t
     C_GAINSBORO                = 0xDEDB,
     C_WHITE_SMOKE              = 0xF7BE,
     C_WHITE                    = 0xFFFF,
+    C_OLIVE_YELLOW             = 0x7326,  // 淡黄
+    C_BRIGHT_YELLOW            = 0xb4c8,  // 亮黄
+    C_DARK_YELLOW              = 0x41c5,  // 暗黄
 
     C_TRANSPARENT = C_MAGENTA, // -1,
     C_NONE = -2,

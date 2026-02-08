@@ -3,7 +3,7 @@
 #define RG_FONT_DEFAULT RG_FONT_CHINESE_24
 // #define RG_PROJECT_WEBSITE "https://github.com/wheniseeyouagain/retro-go-hack"
 
-#define RG_GPIO_LED                 GPIO_NUM_28
+// #define RG_GPIO_LED                 GPIO_NUM_28
 
 /****************************************************************************
  * Storage                                                                  *

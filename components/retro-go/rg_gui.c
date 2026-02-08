@@ -116,7 +116,7 @@ void rg_gui_init(void)
     if (!rg_gui_set_language_id(rg_settings_get_number(NS_GLOBAL, SETTING_LANGUAGE, RG_LANG_DEFAULT)))
         rg_gui_set_language_id(0);
     if (!rg_gui_set_font(rg_settings_get_number(NS_GLOBAL, SETTING_FONTTYPE, RG_FONT_DEFAULT)))
-        rg_gui_set_font(1); //默认使用支持中文的字体
+        rg_gui_set_font(0); //默认使用支持中文的字体
     rg_gui_set_theme(rg_settings_get_string(NS_GLOBAL, SETTING_THEME, NULL));
     gui.initialized = true;
 }

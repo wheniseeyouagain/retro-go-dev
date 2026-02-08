@@ -174,5 +174,5 @@
 #endif
 
 #ifndef RG_FONT_DEFAULT
-#define RG_FONT_DEFAULT RG_FONT_VERA_14
+#define RG_FONT_DEFAULT RG_FONT_CHINESE_24
 #endif

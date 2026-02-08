@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define LCD_BUFFER_LENGTH (RG_SCREEN_WIDTH * 4) // In pixels
+// #define LCD_BUFFER_LENGTH (RG_SCREEN_WIDTH * 4) // In pixels
 #define ALIGN_UP(num, align)    (((num) + ((align) - 1)) & ~((align) - 1))
 
 // static rg_display_driver_t driver;
@@ -43,6 +43,10 @@ static inline void lcd_send_buffer(uint16_t *buffer, size_t length);
 #include "drivers/display/ili9341.h"
 #elif RG_SCREEN_DRIVER == 2 /* ST7701 MIPI DSI */
 #include "drivers/display/st7701.h"
+#elif RG_SCREEN_DRIVER == 3 /* ST7796 I80 16bit */
+#include "drivers/display/i80_st7796.h"
+#elif RG_SCREEN_DRIVER == 98 /* DO NOT USE, DEMO */
+#include "drivers/display/ili9341_buffered.h"
 #elif RG_SCREEN_DRIVER == 99
 #include "drivers/display/sdl2.h"
 #else
@@ -118,6 +122,7 @@ static inline unsigned blend_pixels(unsigned a, unsigned b)
     // return (((a ^ b) & 0b1101111011110110U) >> 1) + (a & b);
 }
 
+#if RG_SCREEN_DRIVER != 2 /* ILI9341/ST7789 */
 static inline void write_update(const rg_surface_t *update)
 {
     const int64_t time_start = rg_system_timer();
@@ -153,7 +158,7 @@ static inline void write_update(const rg_surface_t *update)
 
     const int screen_left = display.screen.margins.left + draw_left;
     const int screen_top = display.screen.margins.top + draw_top;
-    const bool partial_update = RG_SCREEN_PARTIAL_UPDATES;
+    const bool partial_update = RG_SCREEN_PARTIAL_UPDATES && LCD_ACCESS_MODE == 0;
     // const bool interlace = false;
 
     int lines_per_buffer = LCD_BUFFER_LENGTH / draw_width;
@@ -161,6 +166,12 @@ static inline void write_update(const rg_surface_t *update)
     int lines_updated = 0;
     int window_top = -1;
     int osd_next_call = 20;
+
+    // if (format != RG_PIXEL_565_BE && format != RG_PIXEL_565_LE && format != RG_PIXEL_PAL565_BE &&
+    //     format != RG_PIXEL_PAL565_LE)
+    // {
+    //     RG_PANIC("Unknown pixel format!");
+    // }
 
     for (int y = 0; y < draw_height;)
     {
@@ -176,8 +187,11 @@ static inline void write_update(const rg_surface_t *update)
                                          LINE_IS_REPEATED(y + lines_to_copy)))
                 --lines_to_copy;
         }
-
+#if LCD_ACCESS_MODE == 0
         uint16_t *line_buffer = lcd_get_buffer(LCD_BUFFER_LENGTH);
+#else
+        uint16_t *line_buffer = lcd_get_buffer_ptr(screen_left, screen_top + y);
+#endif
         uint16_t *line_buffer_ptr = line_buffer;
 
         uint32_t checksum = 0xFFFFFFFF;
@@ -193,19 +207,31 @@ static inline void write_update(const rg_surface_t *update)
             else
             {
                 #define RENDER_LINE(PTR_TYPE, PIXEL) { \
-                    PTR_TYPE *buffer = (PTR_TYPE *)(data + map_viewport_to_source_y[y] * stride);\
+                    const PTR_TYPE *buffer = (PTR_TYPE *)(data + map_viewport_to_source_y[y] * stride); \
                     for (int xx = 0; xx < draw_width; ++xx) { \
                         int x = map_viewport_to_source_x[xx]; \
                         *line_buffer_ptr++ = (PIXEL); \
                     } \
                 }
-                if (format & RG_PIXEL_PALETTE)
+            #if RG_SCREEN_PIXEL_FORMAT == 0 /* 565_BE */
+                if (format == RG_PIXEL_PAL565_BE)
                     RENDER_LINE(uint8_t, palette[buffer[x]])
+                else if (format == RG_PIXEL_565_BE)
+                    RENDER_LINE(uint16_t, buffer[x])
                 else if (format == RG_PIXEL_565_LE)
                     RENDER_LINE(uint16_t, (buffer[x] << 8) | (buffer[x] >> 8))
-                else
+                else if (format == RG_PIXEL_PAL565_LE)
+                    RENDER_LINE(uint8_t, (palette[buffer[x]] << 8) | (palette[buffer[x]] >> 8))
+            #else /* 565_LE */
+                if (format == RG_PIXEL_PAL565_LE)
+                    RENDER_LINE(uint8_t, palette[buffer[x]])
+                else if (format == RG_PIXEL_565_LE)
                     RENDER_LINE(uint16_t, buffer[x])
-
+                else if (format == RG_PIXEL_565_BE)
+                    RENDER_LINE(uint16_t, (buffer[x] << 8) | (buffer[x] >> 8))
+                else if (format == RG_PIXEL_PAL565_BE)
+                    RENDER_LINE(uint8_t, (palette[buffer[x]] << 8) | (palette[buffer[x]] >> 8))
+            #endif
                 if (partial_update)
                     checksum = rg_hash((void*)(line_buffer_ptr - draw_width), draw_width * 2);
             }
@@ -252,20 +278,22 @@ static inline void write_update(const rg_surface_t *update)
             }
         }
 
+#if LCD_ACCESS_MODE == 0
+        size_t lines_to_send = 0;
         if (need_update)
         {
             int top = screen_top + y - lines_to_copy;
             if (top != window_top)
                 lcd_set_window(screen_left, top, draw_width, lines_remaining);
-            lcd_send_buffer(line_buffer, draw_width * lines_to_copy);
             window_top = top + lines_to_copy;
             lines_updated += lines_to_copy;
+            lines_to_send = lines_to_copy;
         }
-        else
-        {
-            // Return unused buffer
-            lcd_send_buffer(line_buffer, 0);
-        }
+        // Always call lcd_send_buffer, even with 0 lines (to return the borrowed buffer)
+        lcd_send_buffer(line_buffer, lines_to_send * draw_width);
+#else
+        lines_updated += lines_to_copy;
+#endif
 
         // Drawing the OSD as we progress reduces flicker compared to doing it once at the end
         if (osd_next_call && draw_top + y >= osd_next_call)
@@ -283,7 +311,9 @@ static inline void write_update(const rg_surface_t *update)
         counters.partFrames++;
     counters.busyTime += rg_system_timer() - time_start;
 }
+#endif /* ILI9341/ST7789 */
 
+#if RG_SCREEN_DRIVER == 2
 static inline void write_update_ppa(const rg_surface_t *update)
 {
     const int64_t time_start = rg_system_timer();
@@ -476,8 +506,9 @@ static inline void write_update_ppa(const rg_surface_t *update)
     // ===================== OSD绘制结束 =====================
 
     // 发送到显示屏
+    // pass width/height (not end-coordinates) to lcd_send_buffer_ppa
     lcd_send_buffer_ppa(out_buf, out_size, display_left, display_top,
-                        display_left + out_width, display_top + out_height);
+                        out_width, out_height);
 
     // 释放缓冲区
     //free(out_buf);
@@ -514,6 +545,7 @@ static inline void write_update_ppa(const rg_surface_t *update)
     counters.fullFrames++;
     counters.busyTime += rg_system_timer() - time_start;
 }
+#endif
 
 static void update_viewport_scaling(void)
 {
@@ -780,6 +812,7 @@ bool rg_display_sync(bool block)
     return !rg_task_messages_waiting(display_task_queue);
 }
 
+#if RG_SCREEN_DRIVER == 2
 void rg_display_write_rect_ppa(int left, int top, int width, int height, int stride, const uint16_t *buffer, uint32_t flags)
 {
     RG_ASSERT_ARG(buffer);
@@ -809,7 +842,8 @@ void rg_display_write_rect_ppa(int left, int top, int width, int height, int str
     int top_temp = top;
     top =  left;
     left = top_temp;
-    top =  display.screen.width  - top - height -1;
+    top =  display.screen.width  - top - height;
+    if (top < 0) top = 0; // 防止出现 -1 导致的越界
     // calc stride before clipping width
     stride = RG_MAX(stride, width * 2);
 
@@ -911,6 +945,7 @@ void rg_display_clear_rect_ppa(int left, int top, int width, int height, uint16_
         }
     }
 }
+#endif
 
 void rg_display_write_rect(int left, int top, int width, int height, int stride, const uint16_t *buffer, uint32_t flags)
 {
@@ -1045,7 +1080,9 @@ bool rg_display_set_geometry(int width, int height, const rg_margins_t *margins)
 void rg_display_deinit(void)
 {
     rg_task_send(display_task_queue, &(rg_task_msg_t){.type = RG_TASK_MSG_STOP}, -1);
-    // lcd_set_backlight(0);
+    #ifdef RG_TARGET_MAJULA
+    lcd_set_backlight(0); //临时
+    #endif
     lcd_deinit();
     RG_LOGI("Display terminated.\n");
 }

@@ -3,12 +3,12 @@ import sys
 import os
 
 # ===================== 可自定义的默认配置 =====================
-# DEFAULT_PNG_NAME = "hourglass.png"  # 你的PNG文件名（放脚本同目录）
-# DEFAULT_OUTPUT_NAME = "image_hourglass.h"  # 生成的h文件名
-# DEFAULT_VAR_NAME = "image_hourglass"        # C数组变量名
-DEFAULT_PNG_NAME = "help.png"  # 你的PNG文件名（放脚本同目录）
-DEFAULT_OUTPUT_NAME = "about_bg.h"  # 生成的h文件名
-DEFAULT_VAR_NAME = "about_bg"        # C数组变量名
+DEFAULT_PNG_NAME = "hourglass.png"  # 你的PNG文件名（放脚本同目录）
+DEFAULT_OUTPUT_NAME = "image_hourglass.h"  # 生成的h文件名
+DEFAULT_VAR_NAME = "image_hourglass"        # C数组变量名
+# DEFAULT_PNG_NAME = "help.png"
+# DEFAULT_OUTPUT_NAME = "about_bg.h"
+# DEFAULT_VAR_NAME = "about_bg"
 # 定义RGB565透明色：0xF81F 对应的RGB888值（关键！）
 # 计算方式：0xF81F → R=31(255), G=1(4), B=31(255) → RGB888=(255, 4, 255)
 TRANSPARENT_RGB888 = (255, 4, 255)  # 对应RGB565 0xF81F
@@ -23,7 +23,7 @@ def png2c_rgb16(png_path, output_c_path, var_name="image_data"):
     except FileNotFoundError:
         print(f"❌ 错误：当前目录下找不到 {png_path} 文件！")
         print(f"   请确认图片文件放在：{os.path.dirname(os.path.abspath(__file__))}")
-        input("按回车键退出...")
+        # input("按回车键退出...")
         sys.exit(1)
     
     # 直接使用图片原始尺寸（核心修改：不再强制缩放）

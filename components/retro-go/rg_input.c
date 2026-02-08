@@ -7,17 +7,12 @@
 
 #ifdef ESP_PLATFORM
 #include <driver/gpio.h>
-#include <driver/adc.h>
-// This is a lazy way to silence deprecation notices on some esp-idf versions...
-// This hardcoded value is the first thing to check if something stops working!
-#define ADC_ATTEN_DB_11 3
 #else
 #include <SDL2/SDL.h>
 #endif
 
 #include "esp_idf_version.h"
 #if RG_BATTERY_DRIVER == 1
-    #if ESP_IDF_VERSION_MAJOR >= 5  // IDF 5.x 及以上
         #include "esp_err.h"
         #include "esp_adc/adc_oneshot.h"
         #include "esp_adc/adc_cali.h"
@@ -25,10 +20,6 @@
         static adc_oneshot_unit_handle_t battery_adc_handle = NULL;
         static adc_cali_handle_t battery_adc_cali_handle = NULL;
         static bool battery_adc_calibrated = false;
-    #else  // IDF 4.x 及以下
-        #include <esp_adc_cal.h>
-        static esp_adc_cal_characteristics_t adc_chars;
-    #endif
 #endif
 
 #ifdef RG_GAMEPAD_ADC_MAP
@@ -53,31 +44,22 @@ static bool input_task_running = false;
 static uint32_t gamepad_state = -1; // _Atomic
 static uint32_t gamepad_mapped = 0;
 static rg_battery_t battery_state = {0};
-
+static int battery_charge_state = -1;
+static float battery_voltage_filtered = 0.0f;
+#define BATTERY_VOLTAGE_ALPHA 0.25f
+static float battery_percent_filtered = -1.0f;
+static int battery_percent_smooth_remaining = 0;
+#define BATTERY_PERCENT_SMOOTH_SAMPLES 8
+#define BATTERY_PERCENT_ALPHA_SLOW 0.08f
+#define BATTERY_PERCENT_ALPHA_FAST 0.5f
+#ifndef BATTERY_UPDATE_INTERVAL_SEC
+#define BATTERY_UPDATE_INTERVAL_SEC 5
+#endif
+#define BATTERY_UPDATE_INTERVAL_US (BATTERY_UPDATE_INTERVAL_SEC * 1000000LL)
 #define UPDATE_GLOBAL_MAP(keymap)                 \
     for (size_t i = 0; i < RG_COUNT(keymap); ++i) \
         gamepad_mapped |= keymap[i].key;          \
 
-#ifdef ESP_PLATFORM
-static inline int adc_get_raw(adc_unit_t unit, adc_channel_t channel)
-{
-    if (unit == ADC_UNIT_1)
-    {
-        return adc1_get_raw(channel);
-    }
-    else if (unit == ADC_UNIT_2)
-    {
-        int adc_raw_value = -1;
-        if (adc2_get_raw(channel, ADC_WIDTH_MAX - 1, &adc_raw_value) != ESP_OK)
-            RG_LOGE("ADC2 reading failed, this can happen while wifi is active.");
-        return adc_raw_value;
-    }
-    RG_LOGE("Invalid ADC unit %d", (int)unit);
-    return -1;
-}
-#endif
-
-#if ESP_IDF_VERSION_MAJOR >= 5 && RG_BATTERY_DRIVER == 1
 static bool battery_adc_calibration_init(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, adc_cali_handle_t *out_handle)
 {
     adc_cali_handle_t handle = NULL;
@@ -95,6 +77,7 @@ static bool battery_adc_calibration_init(adc_unit_t unit, adc_channel_t channel,
         ret = adc_cali_create_scheme_curve_fitting(&cali_config, &handle);
         if (ret == ESP_OK) {
             calibrated = true;
+            RG_LOGI("Battery ADC CURVE_FITTING_SUPPORTED");
         }
     }
 #endif
@@ -132,17 +115,13 @@ static void battery_adc_calibration_deinit(adc_cali_handle_t handle)
     ESP_ERROR_CHECK(adc_cali_delete_scheme_line_fitting(handle));
 #endif
 }
-#endif
 
 bool rg_input_read_battery_raw(rg_battery_t *out)
 {
     uint32_t raw_value = 0;
-    bool present = true;
     bool charging = false;
 
-
 #if RG_BATTERY_DRIVER == 1 /* ADC */
-    #if ESP_IDF_VERSION_MAJOR >= 5  // IDF 5.x 及以上
         if (!battery_adc_handle)
             return false;
 
@@ -159,16 +138,6 @@ bool rg_input_read_battery_raw(rg_battery_t *out)
             raw_value += voltage_mv;
         }
         raw_value /= 4;
-    #else
-        for (int i = 0; i < 4; ++i)
-        {
-            int value = adc_get_raw(RG_BATTERY_ADC_UNIT, RG_BATTERY_ADC_CHANNEL);
-            if (value < 0)
-                return false;
-            raw_value += esp_adc_cal_raw_to_voltage(value, &adc_chars);
-        }
-        raw_value /= 4;
-    #endif
 #elif RG_BATTERY_DRIVER == 2 /* I2C */
     uint8_t data[5];
     if (!rg_i2c_read(0x20, -1, &data, 5))
@@ -182,10 +151,47 @@ bool rg_input_read_battery_raw(rg_battery_t *out)
     if (!out)
         return true;
 
+    #ifdef RG_BATTERY_CHARGE_GPIO
+        charging = (gpio_get_level(RG_BATTERY_CHARGE_GPIO) == 1);
+    #endif
+
+    // 原始电压（mV）——raw_value 已经是 ADC 返回的 mV（经 esp_adc_cal_* 转换）
+    float measured_mv = raw_value * 2.0f;
+    // 简单指数平滑以避免插拔瞬间跳变
+    if (battery_voltage_filtered <= 0.0f)
+        battery_voltage_filtered = measured_mv;
+    battery_voltage_filtered = BATTERY_VOLTAGE_ALPHA * measured_mv + (1.0f - BATTERY_VOLTAGE_ALPHA) * battery_voltage_filtered;
+    float voltage_actual = battery_voltage_filtered;
+
+    // 计算在充电 / 放电 两种映射下的百分比，避免映射切换时的瞬时大跳变
+    float pct_charging = (voltage_actual - 3200.0f) / (4150.0f - 3200.0f) * 100.0f;
+    float pct_discharging = (voltage_actual - 3150.0f) / (4100.0f - 3150.0f) * 100.0f;
+    float new_percent = charging ? pct_charging : pct_discharging;
+    if (new_percent > 100.0f) new_percent = 100.0f;
+    if (new_percent < 0.0f) new_percent = 0.0f;
+
+    // 充电模式变化时，触发一段慢平滑期，避免瞬时切换导致跳变
+    static int battery_charge_prev = -1;
+    if (battery_charge_prev != battery_charge_state) {
+        battery_percent_smooth_remaining = BATTERY_PERCENT_SMOOTH_SAMPLES;
+        battery_charge_prev = battery_charge_state;
+    }
+
+    float alpha = (battery_percent_smooth_remaining > 0) ? BATTERY_PERCENT_ALPHA_SLOW : BATTERY_PERCENT_ALPHA_FAST;
+    if (battery_percent_filtered < 0.0f)
+        battery_percent_filtered = new_percent;
+    else
+        battery_percent_filtered = alpha * new_percent + (1.0f - alpha) * battery_percent_filtered;
+    if (battery_percent_smooth_remaining > 0)
+        battery_percent_smooth_remaining--;
+
+    // 将显示的百分比量化为整数以避免小数抖动频繁更新UI
+    float display_percent = roundf(battery_percent_filtered);
+
     *out = (rg_battery_t){
-        .level = RG_MAX(0.f, RG_MIN(100.f, RG_BATTERY_CALC_PERCENT(raw_value))),
-        .volts = RG_BATTERY_CALC_VOLTAGE(raw_value),
-        .present = present,
+        .level = display_percent,
+        .volts = voltage_actual / 1000.0f,
+        .present = true,
         .charging = charging,
     };
     return true;
@@ -228,16 +234,19 @@ bool rg_input_read_gamepad_raw(uint32_t *out)
     if (data0 > -1) // && data1 > -1)
     {
         buttons = (data1 << 8) | (data0);
+    }
 #elif defined(RG_TARGET_T_DECK_PLUS)
     uint8_t data[5];
     if (rg_i2c_read(T_DECK_KBD_ADDRESS, -1, &data, 5))
     {
         buttons = ((data[0] << 25) | (data[1] << 18) | (data[2] << 11) | ((data[3] & 0xF8) << 4) | (data[4]));
+    }
 #else
     uint8_t data[5];
     if (rg_i2c_read(RG_I2C_GPIO_ADDR, -1, &data, 5))
     {
         buttons = (data[2] << 8) | (data[1]);
+    }
 #endif
         for (size_t i = 0; i < RG_COUNT(keymap_i2c); ++i)
         {
@@ -337,13 +346,12 @@ static void input_task(void *arg)
             rg_battery_t temp = {0};
             if (rg_input_read_battery_raw(&temp))
             {
-                if (fabsf(battery_state.level - temp.level) < RG_BATTERY_UPDATE_THRESHOLD)
-                    temp.level = battery_state.level;
+                // 保留电压小幅变化
                 if (fabsf(battery_state.volts - temp.volts) < RG_BATTERY_UPDATE_THRESHOLD_VOLT)
                     temp.volts = battery_state.volts;
             }
             battery_state = temp;
-            next_battery_update = rg_system_timer() + 2 * 1000000; // update every 2 seconds
+            next_battery_update = rg_system_timer() + BATTERY_UPDATE_INTERVAL_US; // update interval (secs configurable)
         }
 
         rg_task_delay(10);
@@ -422,49 +430,38 @@ void rg_input_init(void)
     UPDATE_GLOBAL_MAP(keymap_serial);
 #endif
 
-
-#if RG_BATTERY_DRIVER == 1 /* ADC */
-    RG_LOGI("Initializing ADC battery driver...");
-    #if ESP_IDF_VERSION_MAJOR >= 5
-        RG_LOGI("Initializing ADC battery driver (new API)...");
-        // Initialize ADC oneshot unit
-        adc_oneshot_unit_init_cfg_t init_config = {
-            .unit_id = RG_BATTERY_ADC_UNIT,
-        };
-        if (RG_BATTERY_ADC_UNIT == ADC_UNIT_2)
-        {
-            init_config.ulp_mode = ADC_ULP_MODE_DISABLE;
-        }
-        ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &battery_adc_handle));
-
-        // Configure ADC channel
-        adc_oneshot_chan_cfg_t config = {
-            .atten = ADC_ATTEN_DB_12,
-            .bitwidth = ADC_BITWIDTH_DEFAULT,
-        };
-        ESP_ERROR_CHECK(adc_oneshot_config_channel(battery_adc_handle, RG_BATTERY_ADC_CHANNEL, &config));
-
-        // Initialize calibration
-        battery_adc_calibrated = battery_adc_calibration_init(RG_BATTERY_ADC_UNIT, RG_BATTERY_ADC_CHANNEL, ADC_ATTEN_DB_12, &battery_adc_cali_handle);
-    #else
-        if (RG_BATTERY_ADC_UNIT == ADC_UNIT_1)
-        {
-            adc1_config_width(ADC_WIDTH_MAX - 1); // there is no adc2_config_width
-            adc1_config_channel_atten(RG_BATTERY_ADC_CHANNEL, ADC_ATTEN_DB_11);
-            esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_MAX - 1, 1100, &adc_chars);
-        }
-        else if (RG_BATTERY_ADC_UNIT == ADC_UNIT_2)
-        {
-            adc2_config_channel_atten(RG_BATTERY_ADC_CHANNEL, ADC_ATTEN_DB_11);
-            esp_adc_cal_characterize(ADC_UNIT_2, ADC_ATTEN_DB_11, ADC_WIDTH_MAX - 1, 1100, &adc_chars);
-        }
-        else
-        {
-            RG_LOGE("Only ADC1 and ADC2 are supported for ADC battery driver!");
-        }
-    #endif
+#ifdef RG_BATTERY_CHARGE_GPIO
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << RG_BATTERY_CHARGE_GPIO),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
 #endif
+#if RG_BATTERY_DRIVER == 1 /* ADC */
+    RG_LOGI("Initializing ADC battery driver (new API)...");
+    // Initialize ADC oneshot unit
+    adc_oneshot_unit_init_cfg_t init_config = {
+        .unit_id = RG_BATTERY_ADC_UNIT,
+    };
+    if (RG_BATTERY_ADC_UNIT == ADC_UNIT_2)
+    {
+        init_config.ulp_mode = ADC_ULP_MODE_DISABLE;
+    }
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &battery_adc_handle));
 
+    // Configure ADC channel
+    adc_oneshot_chan_cfg_t config = {
+        .atten = ADC_ATTEN_DB_12,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(battery_adc_handle, RG_BATTERY_ADC_CHANNEL, &config));
+
+    // Initialize calibration
+    battery_adc_calibrated = battery_adc_calibration_init(RG_BATTERY_ADC_UNIT, RG_BATTERY_ADC_CHANNEL, ADC_ATTEN_DB_12, &battery_adc_cali_handle);
+#endif
     // The first read returns bogus data in some drivers, waste it.
     rg_input_read_gamepad_raw(NULL);
 

@@ -263,7 +263,7 @@ void gbc_main(void)
 
     app = rg_system_reinit(AUDIO_SAMPLE_RATE, &handlers, NULL);
 
-    bool d565be = rg_display_get_info()->screen.format == RG_PIXEL_565_BE;
+    // bool d565be = rg_display_get_info()->screen.format == RG_PIXEL_565_BE;
 
     updates[0] = rg_surface_create(GB_WIDTH, GB_HEIGHT, FB_PIXEL_FORMAT , MEM_ANY);
     updates[1] = rg_surface_create(GB_WIDTH, GB_HEIGHT, FB_PIXEL_FORMAT , MEM_ANY);

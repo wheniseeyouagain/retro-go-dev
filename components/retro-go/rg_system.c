@@ -19,6 +19,7 @@
 #include <esp_timer.h>
 #include <esp_sleep.h>
 #include <driver/gpio.h>
+#include <driver/ledc.h>
 #else
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_mutex.h>
@@ -82,6 +83,32 @@ static struct
 } *profile;
 #endif
 
+#ifdef RG_GPIO_LED
+typedef struct {
+    int brightness;
+    led_mode_t mode;
+} led_config_t;
+
+static led_config_t led_config = {
+    .brightness = 2,
+    .mode = LED_MODE_SOLID
+};
+static bool pwm_initialized = false;
+static ledc_channel_config_t ledc_channel_led;
+static TaskHandle_t breathing_task_handle = NULL;
+// Static task storage to avoid heap allocation for the breathing task
+#define BREATHING_TASK_STACK_SIZE 1024
+static StaticTask_t breathing_task_tcb;
+static StackType_t breathing_task_stack[BREATHING_TASK_STACK_SIZE];
+static const char *SETTING_LED_BRIGHTNESS = "LEDBrightness";
+static const char *SETTING_LED_MODE = "LEDMode";
+static void save_led_config(void);
+static void load_led_config(void);
+static void update_led_display(void);
+static void init_pwm(void);
+static uint16_t get_brightness_value(int level);
+#endif
+
 // The trace will survive a software reset
 static RTC_NOINIT_ATTR panic_trace_t panicTrace;
 // static RTC_NOINIT_ATTR boot_config_t bootConfig;
@@ -105,6 +132,152 @@ static const char *SETTING_INDICATOR_MASK = "Indicators";
 #define logbuf_putc(buf, c) (buf)->console[(buf)->cursor++] = c, (buf)->cursor %= RG_LOGBUF_SIZE;
 #define logbuf_puts(buf, str) for (const char *ptr = str; *ptr; ptr++) logbuf_putc(buf, *ptr);
 
+// 初始化PWM
+#ifdef RG_GPIO_LED
+static void init_pwm(void)
+{
+    if (pwm_initialized) return;
+
+    ledc_channel_config_t channel_c = {
+        .gpio_num       = RG_GPIO_LED,
+        .speed_mode     = LEDC_LOW_SPEED_MODE,
+        .channel        = LEDC_CHANNEL_1,
+        .timer_sel      = LEDC_TIMER_0, //与屏幕共用定时器
+        .duty           = 0,
+        .flags.output_invert = 1,
+    };
+    
+    esp_err_t channel_err = ledc_channel_config(&channel_c);
+    if (channel_err != ESP_OK) {
+            RG_LOGE("LED PWM channel config failed: 0x%x", channel_err);
+            return;
+    }
+    
+    ledc_channel_led = channel_c;
+    pwm_initialized = true;
+}
+
+// 设置PWM占空比
+static void set_pwm_duty(uint16_t duty)
+{
+    ledc_set_duty(ledc_channel_led.speed_mode, ledc_channel_led.channel, duty);
+    ledc_update_duty(ledc_channel_led.speed_mode, ledc_channel_led.channel);
+}
+// 根据亮度等级获取PWM值
+static uint16_t get_brightness_value(int level)
+{
+    static const uint16_t brightness_map[] = {
+        1000,
+        3000,
+        8000
+    };
+    
+    if (level < 1 || level > 3) level = 2; // 默认中
+    return brightness_map[level - 1];
+}
+
+// 呼吸任务
+static void breathing_task(void *arg)
+{
+    led_config_t *config = (led_config_t *)arg;
+    uint16_t duty = 0;
+    uint16_t target_duty = get_brightness_value(config->brightness);
+    while (config->mode == LED_MODE_BREATHING) {
+        // 正弦波呼吸效果
+        float radians = (duty * 2 * 3.14159) / 1023.0;
+        
+        uint16_t current_duty = (uint16_t)(target_duty * (0.5 + 0.5 * sin(radians)));
+        
+        set_pwm_duty(current_duty);
+        
+        duty = (duty + 10) % 1023;
+        vTaskDelay(pdMS_TO_TICKS(30)); // 更新频率
+    }
+    
+    breathing_task_handle = NULL;
+    vTaskDelete(NULL);
+}
+
+// 更新LED显示
+static void update_led_display(void)
+{
+    switch (led_config.mode) {
+        case LED_MODE_OFF:
+            set_pwm_duty(0);
+            if (breathing_task_handle) {
+                vTaskDelete(breathing_task_handle);
+                breathing_task_handle = NULL;
+            }
+            break;
+            
+        case LED_MODE_SOLID:
+            if (breathing_task_handle) {
+                vTaskDelete(breathing_task_handle);
+                breathing_task_handle = NULL;
+            }
+            set_pwm_duty(get_brightness_value(led_config.brightness));
+            break;
+            
+        case LED_MODE_BREATHING:
+            if (!breathing_task_handle) {
+                breathing_task_handle = xTaskCreateStatic(
+                    breathing_task,
+                    "led_breathing",
+                    BREATHING_TASK_STACK_SIZE,
+                    &led_config,
+                    0,
+                    breathing_task_stack,
+                    &breathing_task_tcb);
+            }
+            break;
+    }
+}
+
+// 加载LED配置
+static void load_led_config(void)
+{
+    led_config.brightness = rg_settings_get_number(NS_GLOBAL, SETTING_LED_BRIGHTNESS, 2);
+    led_config.mode = rg_settings_get_number(NS_GLOBAL, SETTING_LED_MODE, 0);
+    update_led_display();
+}
+
+// 保存LED配置
+static void save_led_config(void)
+{
+    rg_settings_set_number(NS_GLOBAL, SETTING_LED_BRIGHTNESS, led_config.brightness);
+    rg_settings_set_number(NS_GLOBAL, SETTING_LED_MODE, led_config.mode);
+}
+
+// 修改设置函数
+void rg_system_set_led_brightness(int level)
+{
+    if (level >= 1 && level <= 3) {  // 现在只有1-3
+        led_config.brightness = level;
+        update_led_display();
+        save_led_config();
+    }
+}
+
+void rg_system_set_led_mode(led_mode_t mode)
+{
+    if (mode >= LED_MODE_OFF && mode <= LED_MODE_BREATHING) {
+        led_config.mode = mode;
+        update_led_display();
+        save_led_config();
+    }
+}
+
+int rg_system_get_led_brightness(void)
+{
+    return led_config.brightness;
+}
+
+led_mode_t rg_system_get_led_mode(void)
+{
+    return led_config.mode;
+}
+
+#endif
 
 static inline void begin_panic_trace(const char *context, const char *message)
 {
@@ -228,28 +401,6 @@ static void update_statistics(void)
     update_memory_statistics();
 }
 
-static void update_indicators(bool reset_animation)
-{
-    uint32_t visibleIndicators = indicators & app.indicatorsMask;
-    static int animation_step = 0;
-    rg_color_t newColor = 0; // C_GREEN
-
-    if (reset_animation)
-        animation_step = 0;
-    else
-        animation_step++;
-
-    if (indicators & (3 << RG_INDICATOR_CRITICAL))
-        newColor = C_RED; // Make it flash rapidly!
-    else if (visibleIndicators & (1 << RG_INDICATOR_POWER_LOW))
-        newColor = (animation_step & 1) ? C_NONE : C_RED;
-    else if (visibleIndicators)
-        newColor = C_BLUE;
-
-    if (newColor != ledColor)
-        rg_system_set_led_color(newColor);
-}
-
 static void system_monitor_task(void *arg)
 {
     int64_t nextLoopTime = 0;
@@ -266,7 +417,6 @@ static void system_monitor_task(void *arg)
 
         rg_battery_t battery = rg_input_read_battery();
         rg_system_set_indicator(RG_INDICATOR_POWER_LOW, (battery.present && battery.level <= 2.f)); // 低电量阈值，2%
-        update_indicators(false);
 
         // Try to avoid complex conversions that could allocate, prefer rounding/ceiling if necessary.
         rg_system_log(RG_LOG_DEBUG, NULL, "STACK:%d, HEAP:%d+%d (%d+%d), BUSY:%d%%, FPS:%d (S:%d R:%d+%d), BATT:%d",
@@ -467,6 +617,12 @@ rg_app_t *rg_system_init(const rg_config_t *config)
     app.bootFlags = rg_settings_get_number(NS_BOOT, SETTING_BOOT_FLAGS, app.bootFlags);
     app.saveSlot = rg_settings_get_number(NS_BOOT, SETTING_BOOT_SLOT, app.saveSlot);
     rg_display_init();
+    // 初始化LED配置
+    #ifdef RG_GPIO_LED
+    init_pwm();
+    load_led_config();
+    
+    #endif
     rg_gui_init();
 
     if (enterRecoveryMode)
@@ -485,7 +641,7 @@ rg_app_t *rg_system_init(const rg_config_t *config)
             if (rg_system_save_trace(RG_STORAGE_ROOT "/crash.log", 1))
                 strcat(message, "\nLog saved to SD Card.");
         }
-        rg_display_clear(C_BLUE);
+        rg_display_clear(C_BLACK);
         rg_gui_alert("System Panic!", message);
         rg_system_exit();
     }
@@ -501,7 +657,7 @@ rg_app_t *rg_system_init(const rg_config_t *config)
     {
         if (config->storageRequired && !rg_storage_ready())
         {
-            rg_display_clear(C_SKY_BLUE);
+            rg_display_clear(C_BLACK);
             rg_gui_alert(_("SD Card Error"), _("Storage mount failed.\nMake sure the card is FAT32."));
             rg_system_exit();
         }
@@ -714,11 +870,6 @@ size_t rg_task_messages_waiting(rg_task_t *task)
 #endif
 }
 
-// bool rg_task_is_blocked(rg_task_t *task)
-// {
-//     return task->blocked;
-// }
-
 void rg_task_delay(uint32_t ms)
 {
 #if defined(ESP_PLATFORM)
@@ -893,7 +1044,7 @@ static void shutdown_cleanup(void)
     rg_input_wait_for_key(RG_KEY_ALL, 0, -1); // Wait for all keys to be released (boot is sensitive to GPIO0,32,33)
     rg_input_deinit();                        // Now we can shutdown input
     rg_i2c_deinit();                          // Must be after input, sound, and rtc
-    rg_display_deinit();                      // Do this very last to reduce flicker time
+        rg_display_deinit();                      // Do this very last to reduce flicker time
 }
 
 void rg_system_shutdown(void)
@@ -922,25 +1073,25 @@ void rg_system_sleep(void)
 }
 
 void rg_system_restart(void)
-{
-    RG_LOGW("Restarting system!");
-    shutdown_cleanup();
-#ifdef ESP_PLATFORM
-    esp_restart();
-#else
-    exit(1);
-#endif
-}
+    {
+        RG_LOGW("Restarting system!");
+        shutdown_cleanup();
+    #ifdef ESP_PLATFORM
+        esp_restart();
+    #else
+        exit(1);
+    #endif
+    }
 
-void rg_system_exit(void)
-{
-    RG_LOGW("Exiting application!");
-    rg_system_switch_app(RG_APP_LAUNCHER, NULL, NULL, 0, 0);
-}
+    void rg_system_exit(void)
+    {
+        RG_LOGW("Exiting application!");
+        rg_system_switch_app(RG_APP_LAUNCHER, NULL, NULL, 0, 0);
+    }
 
-void rg_system_switch_app(const char *partition, const char *name, const char *args, int save_slot, uint32_t flags)
-{
-    RG_LOGI("Switching to app %s (%s)", partition ?: "-", name ?: "-");
+    void rg_system_switch_app(const char *partition, const char *name, const char *args, int save_slot, uint32_t flags)
+    {
+        RG_LOGI("Switching to app %s (%s)", partition ?: "-", name ?: "-");
 
     if (update_boot_config(partition, name, args, save_slot, flags))
         rg_system_restart();
@@ -1076,11 +1227,11 @@ bool rg_system_save_trace(const char *filename, bool panic_trace)
 
 void rg_system_set_indicator(rg_indicator_t indicator, bool on)
 {
-    uint32_t old_indicators = indicators;
+    // uint32_t old_indicators = indicators;
     indicators &= ~(1 << indicator);
     indicators |= (on << indicator);
-    if (old_indicators != indicators)
-        update_indicators(true);
+    // if (old_indicators != indicators)
+    //     update_indicators(true);
 }
 
 bool rg_system_get_indicator(rg_indicator_t indicator)
@@ -1343,7 +1494,7 @@ bool rg_emu_save_state(uint8_t slot)
 
     RG_LOGI("Saving state to '%s'.\n", filename);
 
-    rg_system_set_indicator(RG_INDICATOR_ACTIVITY_SYSTEM, 1);
+    // rg_system_set_indicator(RG_INDICATOR_ACTIVITY_SYSTEM, 1);
     rg_gui_draw_hourglass();
 
     if (!rg_storage_mkdir(rg_dirname(filename)))
@@ -1384,7 +1535,7 @@ bool rg_emu_save_state(uint8_t slot)
     free(filename);
 
     rg_storage_commit();
-    rg_system_set_indicator(RG_INDICATOR_ACTIVITY_SYSTEM, 0);
+    // rg_system_set_indicator(RG_INDICATOR_ACTIVITY_SYSTEM, 0);
 
     return success;
 }

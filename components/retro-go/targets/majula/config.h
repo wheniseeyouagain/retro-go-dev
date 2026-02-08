@@ -1,8 +1,9 @@
 #define RG_TARGET_NAME             "majula"
 #define RG_LANG_DEFAULT RG_LANG_ZH
 #define RG_FONT_DEFAULT RG_FONT_CHINESE_24
-#define RG_PROJECT_WEBSITE "https://github.com/wheniseeyouagain/retro-go-hack"
+// #define RG_PROJECT_WEBSITE "https://github.com/wheniseeyouagain/retro-go-hack"
 
+#define RG_GPIO_LED                 GPIO_NUM_28
 
 /****************************************************************************
  * Storage                                                                  *
@@ -72,8 +73,11 @@
 /****************************************************************************
  * Battery                                                                  *
  ****************************************************************************/
- #define RG_BATTERY_DRIVER            1   // 1 = ADC, 2 = MRGC
- #define RG_BATTERY_ADC_UNIT          ADC_UNIT_1
- #define RG_BATTERY_ADC_CHANNEL       ADC_CHANNEL_6
- #define RG_BATTERY_CALC_PERCENT(raw) (((raw) * 2.f - 3150.f) / (4100.f - 3150.f) * 100.f)
- #define RG_BATTERY_CALC_VOLTAGE(raw) ((raw) * 2.f * 0.001f)
+#define RG_BATTERY_DRIVER            1   // 1 = ADC, 2 = MRGC
+#define RG_BATTERY_ADC_UNIT          ADC_UNIT_1
+#define RG_BATTERY_ADC_CHANNEL       ADC_CHANNEL_6
+// #define RG_BATTERY_CHARGE_GPIO      GPIO_NUM_46
+//  #define RG_BATTERY_CALC_PERCENT(raw) (((raw) * 2.f - 3150.f) / (4100.f - 3150.f) * 100.f)
+//  #define RG_BATTERY_CALC_VOLTAGE(raw) ((raw) * 2.f * 0.001f)
+// #define RG_BATTERY_CALC_VOLTAGE(mv_adc) ((mv_adc) * 2.f / 1000.f)
+// #define RG_BATTERY_CALC_PERCENT(mv_adc) RG_MAX(0.f, RG_MIN(100.f, ((float)(mv_adc) * 2.f - 3200.f) * 0.1f))

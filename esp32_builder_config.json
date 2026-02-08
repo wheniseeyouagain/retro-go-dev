@@ -1,0 +1,14 @@
+{
+  "selected_apps": [
+    "launcher",
+    "retro-core",
+    "snes9x",
+    "gwenesis",
+    "gbsp"
+  ],
+  "target": "majula",
+  "port": "COM3",
+  "baud": "1152000",
+  "no_networking": true,
+  "release": false
+}

@@ -13,7 +13,7 @@ static QueueHandle_t spi_buffers;
 
 #define SPI_TRANSACTION_COUNT (10)
 #define SPI_BUFFER_COUNT      (5)
-#define SPI_BUFFER_LENGTH     (LCD_BUFFER_LENGTH * 2)
+#define SPI_BUFFER_LENGTH     (LCD_BUFFER_LENGTH * 30)
 
 #define ILI9341_CMD(cmd, data...)                    \
     {                                                \

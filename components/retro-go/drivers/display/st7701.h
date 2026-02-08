@@ -10,8 +10,7 @@
 #include "driver/ppa.h"
 
 // #define LCD_ACCESS_MODE   0 // 0=Windowed transactions, 1=Direct full framebuffer
-// #define LCD_BUFFER_LENGTH (RG_SCREEN_WIDTH * 4) // In pixels
-// MIPI DSI 配置 - 根据你的硬件调整这些参数
+#define LCD_BUFFER_LENGTH (RG_SCREEN_WIDTH * 4) // In pixels
 
 #define RG_MIPI_DSI_LANE_NUM          1     // 数据通道数
 #define RG_MIPI_DSI_LANE_BITRATE_MBPS 1000  // 1Gbps
@@ -483,9 +482,14 @@ static inline uint16_t *lcd_get_buffer_ppa()
 static inline void lcd_send_buffer_ppa(uint16_t *buffer, size_t length, int left, int top, int width, int height)
 {
 
+    // Treat 'width' and 'height' as dimensions. esp_lcd_panel_draw_bitmap
+    // expects start and end coordinates (end exclusive), so convert.
+    int x_end = left + width;  // exclusive end
+    int y_end = top + height;  // exclusive end
+
     esp_err_t ret = esp_lcd_panel_draw_bitmap(mipi_dpi_panel,
                                                left, top,
-                                               width, height,
+                                               x_end, y_end,
                                                buffer);
 
     if (ret != ESP_OK) {

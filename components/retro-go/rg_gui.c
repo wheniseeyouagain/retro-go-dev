@@ -7,7 +7,6 @@
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
-
 #include "bitmaps/image_hourglass.h"
 #include "fonts/fonts.h"
 
@@ -117,7 +116,7 @@ void rg_gui_init(void)
     if (!rg_gui_set_language_id(rg_settings_get_number(NS_GLOBAL, SETTING_LANGUAGE, RG_LANG_DEFAULT)))
         rg_gui_set_language_id(0);
     if (!rg_gui_set_font(rg_settings_get_number(NS_GLOBAL, SETTING_FONTTYPE, RG_FONT_DEFAULT)))
-        rg_gui_set_font(0);
+        rg_gui_set_font(1); //默认使用支持中文的字体
     rg_gui_set_theme(rg_settings_get_string(NS_GLOBAL, SETTING_THEME, NULL));
     gui.initialized = true;
 }
@@ -581,10 +580,10 @@ void rg_gui_draw_image(int x_pos, int y_pos, int width, int height, bool resampl
 void rg_gui_draw_icons(void)
 {
     rg_battery_t battery = rg_input_read_battery();
-    rg_network_t network = rg_network_get_info();
+    // rg_network_t network = rg_network_get_info();
     rg_rect_t txt = TEXT_RECT("00:00", 0);
     int bar_height = txt.height;
-    int icon_height = 18;
+    int icon_height = 0.75f * bar_height;
     int icon_top = RG_MAX(0, (bar_height - icon_height) / 2);
     int right = gui.margins.right;
 
@@ -604,9 +603,9 @@ void rg_gui_draw_icons(void)
 
         //电池身体
         int border = 1;
-        int body_width = 30;
+        int body_width = 1.25f * bar_height;
         int body_height = icon_height;
-        int body_padding = 2;
+        int body_padding = 0.1f * bar_height;
         //电量
         int bat_width = (body_width - 2*border - 2*body_padding) / 100.f * battery.level;
         int bat_height = body_height - 2*border - 2*body_padding;
@@ -618,10 +617,14 @@ void rg_gui_draw_icons(void)
         int y_pos = icon_top;
         int bat_x = x_pos + border + body_padding;
         int bat_y = y_pos + border + body_padding;
-        int heat_x = x_pos + body_width + 2;
+        int heat_x = x_pos + body_width + body_padding;
         int heat_y = y_pos + (icon_height - heat_height) / 2;
 
-        rg_color_t color_fill = (battery.level > 10 ? (battery.level > 20 ? C_FOREST_GREEN : C_ORANGE) : C_RED);
+        #ifdef RG_BATTERY_CHARGE_GPIO
+        rg_color_t color_fill = battery.charging ? C_FOREST_GREEN : (battery.level > 15 ? (battery.level > 25 ? C_SILVER : C_ORANGE) : C_RED);
+        #else
+        rg_color_t color_fill = (battery.level > 15 ? (battery.level > 25 ? C_FOREST_GREEN : C_ORANGE) : C_RED);
+        #endif
         rg_color_t color_border = C_SILVER;
         rg_color_t color_empty = C_BLACK;
 
@@ -634,40 +637,40 @@ void rg_gui_draw_icons(void)
         right += x_pos;
     }
 
-    if (network.state > RG_NETWORK_DISCONNECTED)
-    {
-        right += 22;
+    // if (network.state > RG_NETWORK_DISCONNECTED)
+    // {
+    //     right += 22;
 
-        int width = 16;
-        int height = icon_height;
-        int seg_width = (width - 2 - 2) / 3;
-        int seg_height = height / 3;
-        int x_pos = -right;
-        int y_pos = icon_top + height;
+    //     int width = 16;
+    //     int height = icon_height;
+    //     int seg_width = (width - 2 - 2) / 3;
+    //     int seg_height = height / 3;
+    //     int x_pos = -right;
+    //     int y_pos = icon_top + height;
 
-        rg_color_t color_fill = (network.state == RG_NETWORK_CONNECTED) ? C_GREEN : C_NONE;
-        rg_color_t color_border = (network.state == RG_NETWORK_CONNECTED) ? C_SILVER : C_DIM_GRAY;
+    //     rg_color_t color_fill = (network.state == RG_NETWORK_CONNECTED) ? C_GREEN : C_NONE;
+    //     rg_color_t color_border = (network.state == RG_NETWORK_CONNECTED) ? C_SILVER : C_DIM_GRAY;
 
-        rg_gui_draw_rect(x_pos, y_pos - seg_height * 1, seg_width, seg_height * 1, 1, color_border, color_fill);
-        x_pos += seg_width + 2;
-        rg_gui_draw_rect(x_pos, y_pos - seg_height * 2, seg_width, seg_height * 2, 1, color_border, color_fill);
-        x_pos += seg_width + 2;
-        rg_gui_draw_rect(x_pos, y_pos - seg_height * 3, seg_width, seg_height * 3, 1, color_border, color_fill);
-    }
+    //     rg_gui_draw_rect(x_pos, y_pos - seg_height * 1, seg_width, seg_height * 1, 1, color_border, color_fill);
+    //     x_pos += seg_width + 2;
+    //     rg_gui_draw_rect(x_pos, y_pos - seg_height * 2, seg_width, seg_height * 2, 1, color_border, color_fill);
+    //     x_pos += seg_width + 2;
+    //     rg_gui_draw_rect(x_pos, y_pos - seg_height * 3, seg_width, seg_height * 3, 1, color_border, color_fill);
+    // }
 
-    if (gui.show_clock)
-    {
-        right += txt.width + 4;
+    // if (gui.show_clock)
+    // {
+    //     right += txt.width + 4;
 
-        int x_pos = -right;
-        int y_pos = 0;
-        char buffer[12];
-        time_t time_sec = time(NULL);
-        struct tm *time = localtime(&time_sec);
+    //     int x_pos = -right;
+    //     int y_pos = 0;
+    //     char buffer[12];
+    //     time_t time_sec = time(NULL);
+    //     struct tm *time = localtime(&time_sec);
 
-        sprintf(buffer, "%02d:%02d", time->tm_hour, time->tm_min);
-        rg_gui_draw_text(x_pos, y_pos, 0, buffer, C_SILVER, gui.screen_buffer ? C_TRANSPARENT : C_BLACK, 0);
-    }
+    //     sprintf(buffer, "%02d:%02d", time->tm_hour, time->tm_min);
+    //     rg_gui_draw_text(x_pos, y_pos, 0, buffer, C_SILVER, gui.screen_buffer ? C_TRANSPARENT : C_BLACK, 0);
+    // }
 }
 
 void rg_gui_draw_hourglass(void)
@@ -732,7 +735,7 @@ rg_rect_t rg_gui_draw_dialog(const char *title, const rg_gui_option_t *options, 
     const int font_height = gui.font_height;
     const int max_box_width = 0.86f * gui.screen_width;
     const int max_box_height = 0.86f * gui.screen_height;
-    const int box_padding = 16;
+    const int box_padding = 0.5 * font_height;
     const int row_padding_y = 0; // now handled by draw_text
     const int row_padding_x = 8;
     const int max_inner_width = max_box_width - sep_width - (row_padding_x + box_padding) * 2;
@@ -1698,6 +1701,50 @@ static rg_gui_event_t led_indicator_cb(rg_gui_option_t *option, rg_gui_event_t e
     return RG_DIALOG_VOID;
 }
 
+// LED亮度回调（低、中、高）
+static rg_gui_event_t led_brightness_cb(rg_gui_option_t *option, rg_gui_event_t event)
+{
+    int brightness = rg_system_get_led_brightness();
+    
+    if (event == RG_DIALOG_PREV && --brightness < 1)
+        brightness = 3;
+    if (event == RG_DIALOG_NEXT && ++brightness > 3)
+        brightness = 1;
+    
+    if (brightness != rg_system_get_led_brightness())
+    {
+        rg_system_set_led_brightness(brightness);
+    }
+    const char *brightness_text = NULL;
+    brightness_text = (brightness == 1) ? _("Low") :
+                      (brightness == 2) ? _("Medium") :
+                                          _("High");
+    strcpy(option->value, brightness_text);
+    return RG_DIALOG_VOID;
+}
+
+// LED模式回调（关闭、常亮、呼吸）
+static rg_gui_event_t led_mode_cb(rg_gui_option_t *option, rg_gui_event_t event)
+{
+    int mode = rg_system_get_led_mode();
+    
+    if (event == RG_DIALOG_PREV && --mode < 0)
+        mode = 2;
+    if (event == RG_DIALOG_NEXT && ++mode > 2)
+        mode = 0;
+    
+    if (mode != rg_system_get_led_mode())
+    {
+        rg_system_set_led_mode(mode);
+    }
+    const char *mode_text = NULL;
+    mode_text = (mode == 0) ? _("Off") :
+                (mode == 1) ? _("Solid") :
+                            _("Breathing");
+    strcpy(option->value, mode_text);
+    return RG_DIALOG_VOID;
+}
+
 static rg_gui_event_t show_clock_cb(rg_gui_option_t *option, rg_gui_event_t event)
 {
     if (event == RG_DIALOG_PREV || event == RG_DIALOG_NEXT)
@@ -2104,7 +2151,8 @@ void rg_gui_options_menu(void)
         // {0, _("Timezone"),      "-", RG_DIALOG_FLAG_NORMAL, &timezone_cb},//时区
         {0, _("Language"),      "-", RG_DIALOG_FLAG_NORMAL, &language_cb},
         #ifdef RG_GPIO_LED // Only show disk LED option if disk LED GPIO pin is defined
-        {0, _("LED options"),   NULL, RG_DIALOG_FLAG_NORMAL, &led_indicator_cb},
+        {0, _("LED Brightness"), "-", RG_DIALOG_FLAG_NORMAL, &led_brightness_cb},
+        {0, _("LED Mode"),      "-", RG_DIALOG_FLAG_NORMAL, &led_mode_cb},
         #endif
         #ifdef RG_ENABLE_NETWORKING
         {0, _("Wi-Fi options"), NULL, RG_DIALOG_FLAG_NORMAL, &wifi_cb},
@@ -2196,17 +2244,17 @@ void rg_gui_debug_menu(void)
     char stack_hwm[20], heap_free[20], block_free[20];
     char local_time[32], timezone[32], uptime[20];
     char battery_info[20], frame_time[20], overclock[20];
-    char app_name[32], network_str[64];
+    char app_name[32];
 
     const rg_gui_option_t options[] = {
-        {0x100, "Screen res", screen_res,   RG_DIALOG_FLAG_NORMAL, NULL},
+        {0x000, "Screen res", screen_res,   RG_DIALOG_FLAG_NORMAL, NULL},
         {0x000, "Source res", source_res,   RG_DIALOG_FLAG_NORMAL, NULL},
         {0x000, "Scaled res", scaled_res,   RG_DIALOG_FLAG_NORMAL, NULL},
         {0x000, "Stack HWM ", stack_hwm,    RG_DIALOG_FLAG_NORMAL, NULL},
         {0x000, "Heap free ", heap_free,    RG_DIALOG_FLAG_NORMAL, NULL},
         {0x000, "Block free", block_free,   RG_DIALOG_FLAG_NORMAL, NULL},
         {0x000, "App name  ", app_name,     RG_DIALOG_FLAG_NORMAL, NULL},
-        {0x000, "Network   ", network_str,  RG_DIALOG_FLAG_NORMAL, NULL},
+        // {0x000, "Network   ", network_str,  RG_DIALOG_FLAG_NORMAL, NULL},
         {0x000, "Local time", local_time,   RG_DIALOG_FLAG_NORMAL, NULL},
         {0x000, "Timezone  ", timezone,     RG_DIALOG_FLAG_NORMAL, NULL},
         {0x000, "Uptime    ", uptime,       RG_DIALOG_FLAG_NORMAL, NULL},
@@ -2255,17 +2303,17 @@ void rg_gui_debug_menu(void)
     else
         snprintf(battery_info, sizeof(battery_info), "N/A");
 
-    rg_network_t net = rg_network_get_info();
-    if (net.state == RG_NETWORK_DISABLED)
-        snprintf(network_str, 64, "%s", "not available");
-    else if (net.state == RG_NETWORK_CONNECTED)
-        snprintf(network_str, 64, "%s\n%s", net.name, net.ip_addr);
-    else if (net.state == RG_NETWORK_CONNECTING)
-        snprintf(network_str, 64, "%s\n%s", net.name, "connecting...");
-    else if (net.name[0])
-        snprintf(network_str, 64, "%s\n%s", net.name, "disconnected");
-    else
-        snprintf(network_str, 64, "%s", "disconnected");
+    // rg_network_t net = rg_network_get_info();
+    // if (net.state == RG_NETWORK_DISABLED)
+    //     snprintf(network_str, 64, "%s", "not available");
+    // else if (net.state == RG_NETWORK_CONNECTED)
+    //     snprintf(network_str, 64, "%s\n%s", net.name, net.ip_addr);
+    // else if (net.state == RG_NETWORK_CONNECTING)
+    //     snprintf(network_str, 64, "%s\n%s", net.name, "connecting...");
+    // else if (net.name[0])
+    //     snprintf(network_str, 64, "%s\n%s", net.name, "disconnected");
+    // else
+    //     snprintf(network_str, 64, "%s", "disconnected");
 
     switch (rg_gui_dialog("Debugging", options, 0))
     {

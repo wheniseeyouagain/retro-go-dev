@@ -5,8 +5,8 @@
 #include "applications.h"
 #include "gui.h"
 
-#define HEADER_HEIGHT       (26)
-#define HEADER_X            (162)
+#define HEADER_HEIGHT       (24)
+#define HEADER_X            ((gui.width - 130) / 2) //130为banner宽度
 #define LOGO_WIDTH          (46)
 #define PREVIEW_HEIGHT      ((int)(gui.height * 0.70f))
 #define PREVIEW_WIDTH       ((int)(gui.width * 0.50f))
@@ -204,27 +204,27 @@ void gui_update_theme(void)
     gui.themes[0].list.standard_bg = rg_gui_get_theme_color("launcher_1", "list_standard_bg", C_TRANSPARENT);
     gui.themes[0].list.standard_fg = rg_gui_get_theme_color("launcher_1", "list_standard_fg", C_GRAY);
     gui.themes[0].list.selected_bg = rg_gui_get_theme_color("launcher_1", "list_selected_bg", C_TRANSPARENT);
-    gui.themes[0].list.selected_fg = rg_gui_get_theme_color("launcher_1", "list_selected_fg", C_WHITE);
+    gui.themes[0].list.selected_fg = rg_gui_get_theme_color("launcher_1", "list_selected_fg", C_BRIGHT_YELLOW);
 
     gui.themes[1].background = rg_gui_get_theme_color("launcher_2", "background", C_BLACK);
     gui.themes[1].foreground = rg_gui_get_theme_color("launcher_2", "foreground", C_SNOW);
     gui.themes[1].list.standard_bg = rg_gui_get_theme_color("launcher_2", "list_standard_bg", C_TRANSPARENT);
     gui.themes[1].list.standard_fg = rg_gui_get_theme_color("launcher_2", "list_standard_fg", C_GRAY);
     gui.themes[1].list.selected_bg = rg_gui_get_theme_color("launcher_2", "list_selected_bg", C_TRANSPARENT);
-    gui.themes[1].list.selected_fg = rg_gui_get_theme_color("launcher_2", "list_selected_fg", C_GREEN);
+    gui.themes[1].list.selected_fg = rg_gui_get_theme_color("launcher_2", "list_selected_fg", C_WHITE);
 
     gui.themes[2].background = rg_gui_get_theme_color("launcher_3", "background", C_BLACK);
     gui.themes[2].foreground = rg_gui_get_theme_color("launcher_3", "foreground", C_SNOW);
     gui.themes[2].list.standard_bg = rg_gui_get_theme_color("launcher_3", "list_standard_bg", C_TRANSPARENT);
     gui.themes[2].list.standard_fg = rg_gui_get_theme_color("launcher_3", "list_standard_fg", C_GRAY);
-    gui.themes[2].list.selected_bg = rg_gui_get_theme_color("launcher_3", "list_selected_bg", C_WHITE);
+    gui.themes[2].list.selected_bg = rg_gui_get_theme_color("launcher_3", "list_selected_bg", C_BRIGHT_YELLOW);
     gui.themes[2].list.selected_fg = rg_gui_get_theme_color("launcher_3", "list_selected_fg", C_BLACK);
 
     gui.themes[3].background = rg_gui_get_theme_color("launcher_4", "background", C_BLACK);
     gui.themes[3].foreground = rg_gui_get_theme_color("launcher_4", "foreground", C_SNOW);
     gui.themes[3].list.standard_bg = rg_gui_get_theme_color("launcher_4", "list_standard_bg", C_TRANSPARENT);
     gui.themes[3].list.standard_fg = rg_gui_get_theme_color("launcher_4", "list_standard_fg", C_DARK_GRAY);
-    gui.themes[3].list.selected_bg = rg_gui_get_theme_color("launcher_4", "list_selected_bg", C_WHITE);
+    gui.themes[3].list.selected_bg = rg_gui_get_theme_color("launcher_4", "list_selected_bg", C_BRIGHT_YELLOW);
     gui.themes[3].list.selected_fg = rg_gui_get_theme_color("launcher_4", "list_selected_fg", C_BLACK);
 
     // Flush our image cache to make sure the new images are loaded next time

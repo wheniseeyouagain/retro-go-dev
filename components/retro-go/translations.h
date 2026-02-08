@@ -342,6 +342,38 @@ static const char *translations[][RG_LANG_MAX] =
         [RG_LANG_ZH] = "LED 选项"
     },
     {
+        [RG_LANG_EN] = "LED Brightness",
+        [RG_LANG_ZH] = "LED亮度"
+    },
+    {
+        [RG_LANG_EN] = "LED Mode",
+        [RG_LANG_ZH] = "LED模式"
+    },
+    {
+        [RG_LANG_EN] = "Low",
+        [RG_LANG_ZH] = "低"
+    },
+    {
+        [RG_LANG_EN] = "Medium",
+        [RG_LANG_ZH] = "中"
+    },
+    {
+        [RG_LANG_EN] = "High",
+        [RG_LANG_ZH] = "高"
+    },
+    {
+        [RG_LANG_EN] = "Off",
+        [RG_LANG_ZH] = "关闭"
+    },
+    {
+        [RG_LANG_EN] = "Solid",
+        [RG_LANG_ZH] = "常亮"
+    },
+    {
+        [RG_LANG_EN] = "Breathing",
+        [RG_LANG_ZH] = "呼吸"
+    },
+    {
         [RG_LANG_EN] = "System activity",
         [RG_LANG_ZH] = "系统指示灯"
     },

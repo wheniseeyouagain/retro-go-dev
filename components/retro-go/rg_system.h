@@ -343,6 +343,16 @@ void __cyg_profile_func_exit(void *this_fn, void *call_site);
 
 void rg_volume_handle(uint32_t joystick, int64_t now);
 
+typedef enum {
+    LED_MODE_OFF = 0,     // 关闭
+    LED_MODE_SOLID = 1,   // 常亮
+    LED_MODE_BREATHING = 2 // 呼吸
+} led_mode_t;
+void rg_system_set_led_brightness(int level);
+int rg_system_get_led_brightness(void);
+void rg_system_set_led_mode(led_mode_t mode); 
+led_mode_t rg_system_get_led_mode(void);
+
 #ifdef __cplusplus
 }
 #endif

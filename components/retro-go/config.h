@@ -30,6 +30,8 @@
 #include "targets/esp32-s3-devkit/config.h"
 #elif defined(RG_TARGET_ESP32_P4_DEVKIT)
 #include "targets/esp32-p4-devkit/config.h"
+#elif defined(RG_TARGET_KATARINA)
+#include "targets/katarina/config.h"
 #elif defined(RG_TARGET_MAJULA)
 #include "targets/majula/config.h"
 #else
@@ -118,7 +120,7 @@
 // These values are to prevent jitter, so that the battery icon doesn't flicker or
 // percent display doesn't oscillate between 77 and 78%, for example
 #ifndef RG_BATTERY_UPDATE_THRESHOLD
-#define RG_BATTERY_UPDATE_THRESHOLD 1.0f
+#define RG_BATTERY_UPDATE_THRESHOLD 2.0f
 #endif
 #ifndef RG_BATTERY_UPDATE_THRESHOLD_VOLT
 #define RG_BATTERY_UPDATE_THRESHOLD_VOLT 0.010f

@@ -14,6 +14,7 @@ build/
 /*.fw
 /*.img
 /*.zip
+rg_tool_gui.py
 
 # SDL2 build
 /sd
